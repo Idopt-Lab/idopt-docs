@@ -9,7 +9,11 @@
   },
   "favicon": "/favicon.svg",
   "navigation": {
-    "groups": []
+    "tabs": [
+      {
+        "tab": "Home"
+      }
+    ]
   },
   "logo": {
     "light": "/logo/light.svg",

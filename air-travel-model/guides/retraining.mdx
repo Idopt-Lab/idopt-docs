@@ -1,0 +1,87 @@
+---
+title: Retraining Models
+description: How to update models with new data from BTS, Amtrak, or OSRM
+---
+
+Pre-trained `.pkl` files are included in the repo. When new quarterly data becomes available, use the update scripts to retrain.
+
+## Air fare
+
+Download a new DB1B `.asc` file from the [BTS website](https://www.transtats.bts.gov/Tables.asp?QO_VQ=EFD), then:
+
+```bash
+python scripts/update_air_fare.py --asc path/to/db1b.asc
+```
+
+This will:
+1. Parse the `.asc` file via `setup_datasets/ingest_db1b.py`
+2. Rebuild the historical OD pairs dataset (2023–present)
+3. Retrain the HGB + RF ensemble with time-decay weighting
+4. Back up the old model to `fare_model_historical.pkl.bak` before overwriting
+
+## Air time
+
+```bash
+python scripts/update_air_time.py
+```
+
+Rebuilds from `T100_Domestic_Segment/` raw data. Add new T-100 `.zip` files to that folder first.
+
+## Drive time
+
+The drive time model is built from OSRM routing results. The matrix build queries the public OSRM API and is resumable — safe to interrupt:
+
+```bash
+python scripts/update_drive_time.py --demo
+```
+
+`--demo` uses `routing.openstreetmap.de` (~1 req/sec, no API key needed). Omit for a local OSRM server.
+
+### Full local OSRM pipeline
+
+For a local build (more coverage, faster queries):
+
+```bash
+python scripts/setup_osrm.py
+```
+
+**Prerequisites:**
+- `osmium-tool` and `osrm-backend` installed
+- ~16 GB RAM
+- ~15 GB disk
+- Several hours of processing time
+
+Pass `--skip-download` or `--skip-process` to resume from a partial build.
+
+## Train time
+
+```bash
+python scripts/update_train_time.py
+```
+
+Parses `data/amtrak_gtfs.zip` and retrains. Download a fresh GTFS feed from [Amtrak's open data page](https://www.amtrak.com/about-amtrak/research-policy/open-data.html) and replace the zip before retraining.
+
+---
+
+## Trainer architecture
+
+All trainers inherit from `BaseTrainer` in `src/air_travel_model/trainers/base.py`:
+
+1. `load_data()` — reads CSV training data
+2. `engineer_features(df)` — produces `(X, feature_names, y, sample_weights)`
+3. `build_route_stats(df)` — per-OD-pair lookup dict (distance, volume, averages)
+4. `build_aggregate_lookups(df)` — per-origin/dest fallback stats
+5. `train()` — fits HGB + RF, evaluates on 20% holdout, picks best by R², saves `.pkl`
+
+The saved pickle is a dict:
+
+```python
+{
+    "hgb": HistGradientBoostingRegressor,
+    "rf": RandomForestRegressor,
+    "best": "ensemble" | "hgb" | "rf",
+    "features": [...],
+    "route_stats": {(origin, dest): {...}},
+    "aggregate": {"origin_avg": {...}, "dest_avg": {...}, ...},
+}
+```

@@ -1,0 +1,97 @@
+---
+title: TransportPredictor
+description: Unified API for all transport cost and time models
+---
+
+## Import
+
+```python
+from air_travel_model import TransportPredictor
+tp = TransportPredictor()
+```
+
+On instantiation, `TransportPredictor` loads all available `.pkl` model files from `src/air_travel_model/data/`. Missing files are skipped — the predictor still works with whatever models are present.
+
+---
+
+## Methods
+
+### `predict(model, origin, destination, **kwargs)`
+
+Runs the ML model for the given mode. Raises `ValueError` if the route has no training data and no fallback is available.
+
+```python
+result = tp.predict("air_fare", "CHS", "ROA", quarter=2, is_business=False)
+# {"price": 187.42, "currency": "USD"}
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `model` | `str` | Model name (see table below) |
+| `origin` | `str \| tuple` | IATA code, city name, or `(lat, lon)` |
+| `destination` | `str \| tuple` | Same as origin |
+| `**kwargs` | | Model-specific options (see below) |
+
+---
+
+### `estimate(model, origin, destination, **kwargs)`
+
+Heuristic estimate — always returns a value, even for unseen routes. Use this when you need a fallback or when the route is outside the training distribution.
+
+```python
+result = tp.estimate("drive_time", "BFD", "UNV")
+# {"time_minutes": 142, "distance_miles": 152}
+```
+
+---
+
+### `predict_all(origin, destination, **kwargs)`
+
+Runs `predict()` for all loaded models and returns a combined dict. Models that fail silently return `None` for that key.
+
+```python
+results = tp.predict_all("CHS", "ROA", quarter=2)
+```
+
+---
+
+### `estimate_all(origin, destination, **kwargs)`
+
+Runs `estimate()` for all models. Always returns a complete dict.
+
+---
+
+### `available`
+
+Returns the list of model names with loaded trained data.
+
+```python
+print(tp.available)
+# ["air_fare", "air_time", "drive_time", "drive_fare", "bus_fare", "bus_time", "train_time"]
+```
+
+---
+
+## Model names and kwargs
+
+| Model name | Output key | Required kwargs | Optional kwargs |
+|-----------|-----------|-----------------|-----------------|
+| `air_fare` | `price` (USD) | `quarter` (1–4) | `is_business` (bool, default `False`) |
+| `air_time` | `time_minutes` | `quarter` (1–4) | — |
+| `drive_time` | `time_minutes`, `distance_miles` | — | — |
+| `drive_fare` | `price` (USD) | — | `gas_price` ($/gal), `mpg` |
+| `bus_fare` | `price` (USD) | `quarter` (1–4) | `is_premium` (bool, default `False`) |
+| `bus_time` | `time_minutes` | `quarter` (1–4) | — |
+| `train_time` | `time_minutes` | `quarter` (1–4) | — |
+
+---
+
+## Location resolution
+
+Locations are resolved through `air_travel_model.resolvers.location.resolve()`:
+
+- **IATA code** (`"CHS"`) — direct lookup in `airports.csv`
+- **City name** (`"Charleston, SC"`) — fuzzy-matched to nearest airport
+- **`(lat, lon)` tuple** — nearest airport by haversine distance
+
+For `train_time`, `origin` and `destination` are additionally resolved against `amtrak_stations.csv`. Amtrak station codes (`"NYP"`, `"WAS"`, `"CHI"`) give the best accuracy because the model was trained on station-to-station pairs.

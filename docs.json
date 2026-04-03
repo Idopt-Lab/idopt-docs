@@ -46,6 +46,31 @@
             ]
           }
         ]
+      },
+      {
+        "tab": "Air Travel Model",
+        "groups": [
+          {
+            "group": "Air Travel Model",
+            "pages": [
+              "air-travel-model/overview",
+              "air-travel-model/quickstart"
+            ]
+          },
+          {
+            "group": "Api",
+            "pages": [
+              "air-travel-model/api/transport-predictor"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "air-travel-model/guides/adding-a-model",
+              "air-travel-model/guides/retraining"
+            ]
+          }
+        ]
       }
     ]
   },

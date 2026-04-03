@@ -1,0 +1,113 @@
+---
+title: Adding a New Model
+description: Step-by-step guide to adding a new transport mode or predictor
+---
+
+The library is designed to make new models straightforward to add. You need three things: a predictor, a trainer, and a registry entry.
+
+## 1. Create a predictor
+
+Add a file in `src/air_travel_model/predictors/your_mode.py`:
+
+```python
+from .base import BasePredictor
+
+class YourModePredictor(BasePredictor):
+    default_model_filename = "your_mode_model.pkl"
+
+    def predict(self, origin, destination, **kwargs):
+        # Try route stats lookup first
+        stats = self._get_route_stats(origin, destination)
+        if stats:
+            return {"your_output": stats["mean_value"]}
+
+        # Fall back to ensemble model
+        features = self._build_features(origin, destination, **kwargs)
+        value = self._ensemble_predict(features)
+        return {"your_output": value}
+
+    def estimate(self, origin, destination, **kwargs):
+        # Pure heuristic — never raises
+        distance = self._distance_miles(origin, destination)
+        return {"your_output": distance * YOUR_FACTOR}
+```
+
+## 2. Create a trainer
+
+Add `src/air_travel_model/trainers/your_mode.py`:
+
+```python
+from .base import BaseTrainer
+import pandas as pd
+
+class YourModeTrainer(BaseTrainer):
+
+    def load_data(self) -> pd.DataFrame:
+        return pd.read_csv(self.data_dir / "your_training_data.csv")
+
+    def engineer_features(self, df):
+        # Return (X, feature_names, y, sample_weights)
+        features = ["distance_miles", "log_distance", ...]
+        X = df[features].values
+        y = df["target_column"].values
+        return X, features, y, None  # None = uniform weights
+
+    def build_route_stats(self, df):
+        stats = {}
+        for (origin, dest), group in df.groupby(["origin", "destination"]):
+            stats[(origin, dest)] = {
+                "mean_value": group["target_column"].mean(),
+                "count": len(group),
+            }
+        return stats
+
+    def build_aggregate_lookups(self, df):
+        return {
+            "origin_avg": df.groupby("origin")["target_column"].mean().to_dict(),
+            "dest_avg": df.groupby("destination")["target_column"].mean().to_dict(),
+        }
+```
+
+Run training:
+
+```bash
+python -c "
+from air_travel_model.trainers.your_mode import YourModeTrainer
+YourModeTrainer().train()
+"
+```
+
+This saves `data/your_mode_model.pkl`.
+
+## 3. Register the model
+
+In `src/air_travel_model/registry.py`, add an entry to the `_REGISTRY` dict:
+
+```python
+from .predictors.your_mode import YourModePredictor
+
+_REGISTRY = {
+    # ... existing entries ...
+    "your_mode": {
+        "predictor": YourModePredictor,
+        "model_file": "your_mode_model.pkl",
+        "params": ["quarter"],   # kwargs your predictor accepts
+    },
+}
+```
+
+## 4. Export from `__init__.py`
+
+`TransportPredictor` is the only public export, so no changes to `__init__.py` are needed — the registry entry is enough.
+
+## 5. Add tests
+
+Add a test in `tests/` that calls both `predict()` and `estimate()` for your new mode:
+
+```python
+def test_your_mode_estimate():
+    tp = TransportPredictor()
+    result = tp.estimate("your_mode", "CHS", "ROA")
+    assert "your_output" in result
+    assert result["your_output"] > 0
+```

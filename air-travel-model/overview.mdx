@@ -1,0 +1,47 @@
+---
+title: Overview
+description: Unified transport cost and time predictions for U.S. domestic routes
+---
+
+**airTravelModel** is a Python library that predicts transportation cost and travel time across U.S. domestic routes — air, drive, bus, and train — through a single unified API.
+
+## What it does
+
+Given an origin and destination (airport codes, city names, or coordinates), `TransportPredictor` returns fare and time estimates for every transport mode, using ensemble ML models trained on real schedule and ticket data.
+
+```python
+from air_travel_model import TransportPredictor
+
+tp = TransportPredictor()
+results = tp.predict_all("CHS", "ROA", quarter=2)
+# {
+#   "air_fare":   {"price": 187.42, "currency": "USD"},
+#   "air_time":   {"time_minutes": 98},
+#   "drive_time": {"time_minutes": 324, "distance_miles": 370},
+#   "drive_fare": {"price": 46.25, "currency": "USD"},
+#   "bus_fare":   {"price": 62.00, "currency": "USD"},
+#   "bus_time":   {"time_minutes": 412},
+#   "train_time": {"time_minutes": 510},
+# }
+```
+
+## Models at a glance
+
+| Mode | Output | R² | Training data |
+|------|--------|----|---------------|
+| Air fare | Economy / business fare (USD) | 0.92 | BTS DB1B 2023–2025 |
+| Air time | Block time (minutes) | 0.94 | BTS T-100 2023–2025 |
+| Drive time | Door-to-door drive time | 0.99 | OSRM / OpenStreetMap |
+| Drive fare | Fuel cost estimate | — | Formula-based |
+| Bus fare | Intercity fare | — | Calibrated heuristic |
+| Bus time | Intercity travel time | — | Calibrated heuristic |
+| Train time | Amtrak travel time | 0.99 | Amtrak GTFS |
+
+All models fall back to calibrated heuristics for routes outside the training distribution.
+
+## Design
+
+- **Single entry point**: `TransportPredictor` — no need to import individual predictors.
+- **Ensemble architecture**: each trained model is either HistGradientBoosting, RandomForest, or an average ensemble — whichever scored best on validation.
+- **Graceful degradation**: `predict()` uses ML; `estimate()` uses heuristics — both always return a value.
+- **Extensible**: abstract `BaseTrainer` / `BasePredictor` make it straightforward to add new modes.

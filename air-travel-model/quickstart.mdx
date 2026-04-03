@@ -1,0 +1,75 @@
+---
+title: Quickstart
+description: Install airTravelModel and make your first prediction in under five minutes
+---
+
+## Install
+
+```bash
+git clone https://github.com/Idopt-Lab/airTravelModel.git
+cd airTravelModel
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[test]"
+```
+
+Requires Python 3.10+.
+
+## Your first prediction
+
+```python
+from air_travel_model import TransportPredictor
+
+tp = TransportPredictor()
+
+# Single mode — air fare, Q1 economy
+fare = tp.predict("air_fare", "CHS", "ROA", quarter=1, is_business=False)
+print(fare)
+# {"price": 172.50, "currency": "USD"}
+
+# All modes at once
+results = tp.predict_all("CHS", "ROA", quarter=1)
+for mode, result in results.items():
+    print(f"{mode}: {result}")
+```
+
+## Specifying locations
+
+Locations can be provided three ways — all are equivalent:
+
+```python
+# IATA airport code
+tp.predict("air_fare", "CHS", "JFK", quarter=2)
+
+# City name (resolved to nearest airport)
+tp.predict("air_fare", "Charleston, SC", "New York, NY", quarter=2)
+
+# Lat/lon tuple
+tp.predict("air_fare", (32.8986, -80.0406), (40.6413, -73.7781), quarter=2)
+```
+
+For train time, use Amtrak station codes for best accuracy:
+
+```python
+tp.predict("train_time", "CHS", "NYP", quarter=2)   # NYP = New York Penn
+tp.predict("train_time", "WAS", "CHI", quarter=3)   # WAS = Washington, CHI = Chicago
+```
+
+## Heuristic fallback
+
+When a route has no training data, use `estimate()` instead of `predict()`:
+
+```python
+# estimate() always returns a value — never raises
+result = tp.estimate("drive_time", "BFD", "UNV")
+```
+
+`predict_all()` and `estimate_all()` call all seven models in one shot.
+
+## Run the example script
+
+```bash
+python scripts/example.py
+```
+
+This demonstrates all modes on a Charleston SC → Roanoke VA route with annotated output.

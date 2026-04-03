@@ -1,0 +1,122 @@
+---
+title: Input Format
+description: How to structure your Excel parameter file for the LCC model
+---
+
+Every aircraft analysis is driven by an Excel workbook. The model expects **three sheets** with specific layouts.
+
+---
+
+## Workbook naming convention
+
+Name your file using this pattern so `main()` can auto-discover it:
+
+```
+<AircraftName>_Cost_Model_<AnnualHours>hrs.xlsx
+```
+
+**Examples:**
+```
+Joby_S4_Cost_Model_1500hrs.xlsx
+Archer_Midnight_Cost_Model_2000hrs.xlsx
+Conventional_Cessna_Cost_Model_1200hrs.xlsx
+```
+
+The `extract_aircraft_name()` function strips `_Cost_Model_1500hrs` and replaces underscores with spaces to produce a clean display name.
+
+---
+
+## Sheet 1 — Parameters
+
+A two-column table: parameter name in column A, value in column B. Row 1 is a header and is skipped automatically.
+
+| Parameter | Description | Units |
+|-----------|-------------|-------|
+| `Aircraft_Baseline_Cost` | Base purchase price before automation premium | USD |
+| `Automation_Cost_Base` | Additional cost for autonomous systems | USD |
+| `Number_of_Pilots` | Pilots required per flight — set to `0` for autonomous | count |
+| `Finance_Percent` | Fraction of purchase price that is financed (e.g. `0.85`) | ratio |
+| `Interest_Rate` | Annual loan interest rate (e.g. `0.055`) | ratio |
+| `Life_Cycle_Time` | Service life in years | years |
+| `Flight_Hours_per_Year` | Annual utilisation | hours/year |
+| `Mission_Stage_Length` | Typical stage length per flight | nautical miles |
+| `Resale_Percent` | Residual value as fraction of purchase price | ratio |
+| `Hull_Insurance_Rate` | Hull insurance as fraction of baseline cost | ratio |
+| `Liability_Insurance_Rate` | Liability insurance as fraction of baseline cost | ratio |
+| `Annual_Pilot_Salary` | Pilot annual compensation | USD/year |
+| `Percent_Salaries_to_Benefits` | Benefits as fraction of pilot salary | ratio |
+| `Number_of_Staff` | Non-pilot support staff count | count |
+| `Annual_Staff_Salary` | Support staff annual compensation | USD/year |
+| `Maintenance_Training_Cost` | Annual maintenance training spend | USD/year |
+| `Pilot_Training_Cost` | Per-pilot annual recurrent training cost | USD/pilot/year |
+| `Landing_Site_Hourly_Support` | Vertiport/landing site cost per flight hour | USD/hour |
+| `Maintenance_Software_Cost` | Annual maintenance software subscriptions | USD/year |
+| `Miscellaneous_Service_Cost` | Miscellaneous annual service costs | USD/year |
+| `Property_Tax_Rate` | Property tax as fraction of baseline cost | ratio |
+| `Hangar_and_Office_Cost` | Annual facility and office lease | USD/year |
+| `Maintenance_Hours_per_Flight_Hour` | Maintenance labour hours per flight hour | hours/flight-hour |
+| `Maintenance_Labor_Rate` | Maintenance technician hourly rate | USD/hour |
+| `Fuel_Burn_per_Hour` | Fuel consumption rate | gallons/hour |
+| `Fuel_Price_per_Gallon` | Current fuel price | USD/gallon |
+| `Scheduled_Parts_Rate` | Scheduled parts allowance per flight hour | USD/hour |
+| `Number_of_Engines` | Engine count | count |
+| `Engine_Overhaul_Cost` | Cost per engine overhaul event | USD/engine |
+| `Engine_Overhaul_Interval` | Hours between overhaul events | hours |
+| `Midlife_Inspection_Cost` | Mid-life inspection reserve per hour | USD/hour |
+| `Propeller_Cost` | Propeller replacement cost | USD |
+| `Propeller_Life` | Propeller service life | hours |
+| `Modernisation_Cost` | Avionics/systems upgrade cost | USD |
+| `Modernisation_Interval` | Hours between modernisation events | hours |
+| `Paint_Cost` | Paint job cost | USD |
+| `Paint_Interval` | Hours between paint events | hours |
+| `Refurbishing_Cost` | Interior refurbishment cost | USD |
+| `Refurbishing_Interval` | Hours between refurbishment events | hours |
+| `Battery_Cost` | Battery pack replacement cost (electric/hybrid) | USD |
+| `Battery_Life` | Battery pack service life | hours |
+| `Landing_Fee` | Fee per landing event | USD/landing |
+| `Miscellaneous_Trip_Expenses` | Consumables and per-trip costs | USD/hour |
+| `Profit_Margin` | Target operator profit margin (e.g. `0.15`) | ratio |
+| `Aircraft_PAX_Seats` | Passenger seat count | count |
+| `Percent_Repositioning_Flight_Hours` | Fraction of hours that are deadhead/repositioning | ratio |
+| `Number_of_Pilots` | Pilots per aircraft (used for salary calculation) | count |
+
+<Note>
+  For **electric aircraft** without conventional engines, set `Number_of_Engines` to `0` and `Engine_Overhaul_Cost` to `0`. Battery costs are modelled separately via `Battery_Cost` and `Battery_Life`.
+</Note>
+
+<Note>
+  For **autonomous aircraft**, set `Number_of_Pilots` to `0`. The model automatically applies the `Automation_Cost_Base` premium to the purchase price and increases liability insurance by 10%.
+</Note>
+
+---
+
+## Sheet 2 — Lookup\_Crews
+
+Maps annual flight hours to the number of required crews. Rows 1–2 are headers and are skipped.
+
+| Flight\_Hours\_per\_Year | Number\_of\_Crews |
+|--------------------------|-------------------|
+| 500 | 1 |
+| 1000 | 1 |
+| 1500 | 2 |
+| 2000 | 2 |
+| 2500 | 3 |
+| ... | ... |
+
+The model interpolates (and extrapolates) linearly to find crews at the actual annual hours.
+
+---
+
+## Sheet 3 — Lookup\_Speed
+
+Maps mission stage length to average cruise speed. Rows 1–2 are headers and are skipped.
+
+| Mission\_Stage\_Length | Aircraft\_Speed |
+|------------------------|-----------------|
+| 10 | 80 |
+| 25 | 110 |
+| 50 | 140 |
+| 100 | 160 |
+| ... | ... |
+
+Units: stage length in nautical miles, speed in knots. The model linearly interpolates to find speed at the configured stage length, then derives flight time and flights-per-hour from that.

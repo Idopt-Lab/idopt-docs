@@ -1,0 +1,186 @@
+---
+title: Cost Model
+description: How the LCC model computes fixed costs, variable costs, and revenue metrics
+---
+
+The LCC model breaks total operating cost into two buckets — **fixed** (independent of how much you fly) and **variable** (scale with flight hours) — then integrates them over the service life to produce life cycle totals and revenue metrics.
+
+---
+
+## Cost taxonomy
+
+```
+Total Annual Cost
+├── Fixed Costs
+│   ├── Financing & Asset
+│   │   ├── Annual Amortization        (loan repayment)
+│   │   ├── Annual Depreciation        (straight-line residual loss)
+│   │   └── Landing Site Support       (vertiport fees × hours)
+│   ├── Insurance
+│   │   ├── Hull Insurance
+│   │   └── Liability Insurance        (+10% for autonomous aircraft)
+│   ├── Facilities & Admin
+│   │   ├── Maintenance Software
+│   │   ├── Miscellaneous Service
+│   │   ├── Property Tax
+│   │   └── Hangar & Office Expenses
+│   └── Personnel
+│       ├── Pilot Salaries
+│       ├── Staff Salaries
+│       ├── Personnel Benefits
+│       └── Annual Training Cost
+└── Variable Costs (per flight hour × annual hours)
+    ├── Fuel Cost
+    ├── Maintenance Labor
+    ├── Scheduled Parts
+    ├── Midlife Inspection Reserve
+    ├── Propeller Allowance
+    ├── Engine Overhaul Reserve
+    ├── Modernisation Reserve
+    ├── Paint Reserve
+    ├── Refurbishing Reserve
+    ├── Battery Replacement Reserve    (electric/hybrid only)
+    ├── Miscellaneous Trip Expenses
+    └── Landing Fees
+```
+
+---
+
+## Fixed cost calculations
+
+### Financing
+
+The model uses a standard amortizing loan formula:
+
+```
+Loan amount        = Purchase price × Finance_Percent
+Monthly rate (r)   = Interest_Rate / 12
+n                  = Life_Cycle_Time × 12   (number of monthly payments)
+
+Monthly payment    = Loan × r(1+r)^n / ((1+r)^n − 1)
+Annual amortization = Monthly payment × 12
+```
+
+### Depreciation
+
+Straight-line over the service life:
+
+```
+Resale value        = Purchase price × Resale_Percent
+Annual depreciation = (Purchase price − Resale value) / Life_Cycle_Time
+```
+
+### Autonomous aircraft adjustments
+
+When `Number_of_Pilots = 0`:
+- `Automation_Cost_Base` is added to the purchase price
+- Liability insurance is multiplied by **1.10** (10% surcharge)
+- Pilot salaries and pilot training are zero
+
+### Personnel
+
+```
+Pilots per aircraft = Number_of_Pilots × crews (from lookup)
+Pilot salaries      = Annual_Pilot_Salary × Pilots_per_Aircraft
+Benefits            = Pilot_Salary × Percent_Salaries_to_Benefits × Pilots_per_Aircraft
+Training            = Maintenance_Training_Cost + Pilot_Training_Cost × Pilots_per_Aircraft
+```
+
+---
+
+## Variable cost calculations
+
+All variable costs are expressed per **flight hour** and then multiplied by `Flight_Hours_per_Year` to get annual totals.
+
+### Amortised reserve costs
+
+Replacement/overhaul costs are spread across the interval between events:
+
+```
+Engine overhaul reserve  = (Engine_Overhaul_Cost × Number_of_Engines) / Engine_Overhaul_Interval
+Modernisation reserve    = Modernisation_Cost / Modernisation_Interval
+Paint reserve            = Paint_Cost / Paint_Interval
+Refurbishing reserve     = Refurbishing_Cost / Refurbishing_Interval
+Battery reserve          = Battery_Cost / Battery_Life
+Propeller allowance      = Propeller_Cost / Propeller_Life
+```
+
+### Landing fees
+
+```
+Flights per hour  = 1 / Flight_Time_Hours
+                  = Aircraft_Speed / Mission_Stage_Length
+Landing fees/hour = Flights_per_Hour × Landing_Fee
+```
+
+---
+
+## Life cycle simulation
+
+Annual costs are constant (no inflation model by default), so the ODE right-hand side is a constant vector. The state vector tracks ten cumulative quantities:
+
+| Index | State variable |
+|-------|---------------|
+| 0 | Cumulative amortization |
+| 1 | Cumulative total costs |
+| 2 | Cumulative fixed costs |
+| 3 | Reserved |
+| 4 | Reserved |
+| 5 | Cumulative personnel costs |
+| 6 | Cumulative training costs |
+| 7 | Cumulative variable costs |
+| 8 | Total flight hours |
+| 9 | Cumulative landing fees |
+
+Initial conditions include the **down payment** (purchase price × (1 − Finance_Percent)) and the **first-year training cost** as upfront charges at t = 0.
+
+Integration runs from year 0 to `Life_Cycle_Time` using SciPy's `solve_ivp` with RK45 (relative tolerance 1e-6, absolute tolerance 1e-8).
+
+---
+
+## Revenue metrics
+
+After simulation, `calculate_metrics()` derives two revenue-facing metrics:
+
+### Revenue CASM
+
+Cost per available seat-nautical mile — the standard airline profitability metric:
+
+```
+Revenue hours     = Flight_Hours_per_Year × (1 − Percent_Repositioning_Flight_Hours)
+Revenue nm/year   = Revenue_hours × Aircraft_Speed  (statute miles → nm via 1.151 factor)
+Seat-nm/year      = Revenue nm/year × Aircraft_PAX_Seats
+
+Revenue CASM      = Life_Cycle_Total_Cost × (1 + Profit_Margin) / (Seat-nm over life cycle)
+```
+
+### Fare per passenger-nautical mile
+
+```
+Fare per pax-nm   = Revenue_CASM / 5
+```
+
+<Note>
+  The `/5` factor normalises CASM to a per-passenger basis assuming an average load factor. This is a planning-level estimate — adjust `Aircraft_PAX_Seats` and your profit margin to model different load scenarios.
+</Note>
+
+---
+
+## Comparison outputs
+
+`run_comparison()` returns a DataFrame with one row per aircraft, sorted by Revenue CASM:
+
+| Column | Description |
+|--------|-------------|
+| `Aircraft` | Display name parsed from filename |
+| `Revenue_CASM` | Revenue cost per available seat-nm |
+| `Fare_per_Pax_NM` | Required fare per passenger-nm |
+| `Total_Annual_Costs` | Annual fixed + variable costs |
+| `Life_Cycle_Total_Cost` | Cumulative cost over service life |
+| `Annual_Fixed_Costs` | Fixed cost subtotal |
+| `Annual_Variable_Costs` | Variable cost subtotal |
+| `Aircraft_Purchase_Price` | Acquisition cost |
+| `Variable_Cost_per_Hour` | Total variable cost per flight hour |
+| `Aircraft_Speed` | Average cruise speed (knots) |
+| `Pilots_per_Aircraft` | Effective pilot count |
+| `PAX_Seats` | Passenger seat count |

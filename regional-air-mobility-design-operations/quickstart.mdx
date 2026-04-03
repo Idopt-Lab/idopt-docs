@@ -1,0 +1,109 @@
+---
+title: Quickstart
+description: Install ram-idopt and run your first life cycle cost analysis in under five minutes
+---
+
+## Requirements
+
+- Python 3.10 or later
+- An Excel parameter file describing your aircraft (see [Input Format](/guides/input-format))
+
+---
+
+## Install
+
+Clone the repository and install in editable mode:
+
+```bash
+git clone https://github.com/Idopt-Lab/regional-air-mobility-design-operations.git
+cd regional-air-mobility-design-operations
+pip install -e .
+```
+
+This pulls in all required dependencies automatically (`numpy`, `pandas`, `scipy`, `matplotlib`, `openpyxl`).
+
+<Tip>
+  Use a virtual environment to keep dependencies isolated:
+  ```bash
+  python -m venv .venv && source .venv/bin/activate
+  pip install -e .
+  ```
+</Tip>
+
+---
+
+## Run a single-aircraft analysis
+
+```python
+from ram_idopt.aircraft.cost.LCC import load_parameters, calculate_metrics
+
+# Load parameters from your Excel config file
+params = load_parameters("MyAircraft_Cost_Model_1500hrs.xlsx")
+
+# Compute all cost metrics
+results = calculate_metrics(params)
+
+print(f"Total annual cost:      ${results.Total_Annual_Costs:,.0f}")
+print(f"Annual fixed costs:     ${results.Annual_Fixed_Costs:,.0f}")
+print(f"Annual variable costs:  ${results.Annual_Variable_Costs:,.0f}")
+print(f"Revenue CASM:           ${results.Revenue_CASM:.4f} / seat-nm")
+print(f"Fare per pax-nm:        ${results.Fare_per_Pax_NM:.4f}")
+print(f"Life cycle total cost:  ${results.Life_Cycle_Total_Cost:,.0f}")
+```
+
+---
+
+## Compare multiple aircraft
+
+Place several Excel files in the same directory and call `run_comparison`:
+
+```python
+from pathlib import Path
+from ram_idopt.aircraft.cost.LCC import run_comparison, print_comparison_table, create_comparison_charts
+
+files = list(Path("configs/").glob("*Cost_Model*.xlsx"))
+
+df, full_results = run_comparison(files)
+
+# Print ranked table to console
+print_comparison_table(df)
+
+# Save bar charts, cumulative cost lines, and cost-breakdown pies
+create_comparison_charts(df, full_results, output_dir=Path("outputs/"))
+```
+
+**Console output (example):**
+
+```
+Aircraft              | Rev CASM  | $/Pax-NM  | Annual Cost   | LC Total      | Seats
+------------------------------------------------------------------------------------------
+Joby S4               |   0.1823  |   0.0365  |  1,204,500    |  8,431,500    |   4
+Archer Midnight       |   0.2011  |   0.0402  |  1,387,200    |  9,710,400    |   4
+Conventional Cessna   |   0.2540  |   0.0508  |  1,892,000    | 13,244,000    |   4
+```
+
+---
+
+## Run from the command line
+
+If you have Excel files in the same directory as `LCC.py`, you can run the script directly:
+
+```bash
+python src/ram_idopt/aircraft/cost/LCC.py
+```
+
+It will auto-discover all `*Cost_Model*.xlsx` files, print the comparison table, and write charts to the current directory.
+
+---
+
+## Run tests
+
+```bash
+pytest tests/
+```
+
+Or with the standard library runner:
+
+```bash
+python -m unittest discover -s tests -p "test*.py"
+```

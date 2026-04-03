@@ -28,7 +28,21 @@
           {
             "group": "Regional Air Mobility",
             "pages": [
-              "regional-air-mobility-design-operations/overview"
+              "regional-air-mobility-design-operations/overview",
+              "regional-air-mobility-design-operations/quickstart"
+            ]
+          },
+          {
+            "group": "Api",
+            "pages": [
+              "regional-air-mobility-design-operations/api/lcc"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "regional-air-mobility-design-operations/guides/cost-model",
+              "regional-air-mobility-design-operations/guides/input-format"
             ]
           }
         ]

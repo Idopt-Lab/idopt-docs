@@ -1,0 +1,297 @@
+---
+title: LCC API Reference
+description: Full reference for all public functions and data types in ram_idopt.aircraft.cost.LCC
+---
+
+```python
+from ram_idopt.aircraft.cost.LCC import (
+    load_parameters,
+    calculate_annual_costs,
+    calculate_metrics,
+    run_simulation,
+    run_comparison,
+    create_comparison_charts,
+    print_comparison_table,
+    AnnualCosts,
+)
+```
+
+---
+
+## `load_parameters`
+
+```python
+load_parameters(param_file: str) -> Dict[str, Any]
+```
+
+Reads an Excel workbook and returns a flat parameter dictionary plus lookup-table arrays.
+
+<ParamField path="param_file" type="str" required>
+  Path to the Excel workbook. Must contain sheets named `Parameters`, `Lookup_Crews`, and `Lookup_Speed`.
+</ParamField>
+
+**Returns** `Dict[str, Any]` — all scalar parameters from the `Parameters` sheet, plus:
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `crews_lookup_x` | `np.ndarray` | Flight hours breakpoints for crew count interpolation |
+| `crews_lookup_y` | `np.ndarray` | Crew count values at each breakpoint |
+| `speed_lookup_x` | `np.ndarray` | Stage length breakpoints for speed interpolation |
+| `speed_lookup_y` | `np.ndarray` | Aircraft speed (knots) at each breakpoint |
+
+---
+
+## `calculate_annual_costs`
+
+```python
+calculate_annual_costs(params: Dict[str, Any]) -> AnnualCosts
+```
+
+Core computation. Derives all 40+ cost components from the parameter dictionary.
+
+<ParamField path="params" type="Dict[str, Any]" required>
+  Parameter dictionary returned by `load_parameters`.
+</ParamField>
+
+**Returns** an `AnnualCosts` dataclass with every field populated except the optional life cycle fields (`time_series`, `cumulative_costs`, `Life_Cycle_Total_Cost`, `Revenue_CASM`, `Fare_per_Pax_NM`).
+
+---
+
+## `run_simulation`
+
+```python
+run_simulation(params: Dict[str, Any]) -> Tuple[np.ndarray, np.ndarray, AnnualCosts]
+```
+
+Runs the ODE integration over the service life.
+
+<ParamField path="params" type="Dict[str, Any]" required>
+  Parameter dictionary returned by `load_parameters`.
+</ParamField>
+
+**Returns** a 3-tuple:
+
+| Position | Type | Description |
+|----------|------|-------------|
+| `[0]` | `np.ndarray` shape `(n,)` | Time points from 0 to `Life_Cycle_Time` |
+| `[1]` | `np.ndarray` shape `(10, n)` | State matrix — rows are the 10 cumulative cost channels |
+| `[2]` | `AnnualCosts` | Annual cost breakdown (same as `calculate_annual_costs`) |
+
+**State row index mapping:**
+
+| Row | Channel |
+|-----|---------|
+| 0 | Cumulative amortization |
+| 1 | Cumulative total costs |
+| 2 | Cumulative fixed costs |
+| 3 | Reserved |
+| 4 | Reserved |
+| 5 | Cumulative personnel costs |
+| 6 | Cumulative training costs |
+| 7 | Cumulative variable costs |
+| 8 | Total hours flown |
+| 9 | Cumulative landing fees |
+
+---
+
+## `calculate_metrics`
+
+```python
+calculate_metrics(params: Dict[str, Any]) -> AnnualCosts
+```
+
+High-level function that runs the full pipeline — annual costs, simulation, and revenue metrics — and returns a single enriched `AnnualCosts` object.
+
+<ParamField path="params" type="Dict[str, Any]" required>
+  Parameter dictionary returned by `load_parameters`.
+</ParamField>
+
+**Returns** `AnnualCosts` with all optional fields populated:
+
+| Field | Description |
+|-------|-------------|
+| `time_series` | Time array from ODE integration |
+| `cumulative_costs` | Cumulative total cost array |
+| `Life_Cycle_Total_Cost` | Final cumulative cost (scalar) |
+| `Revenue_CASM` | Cost per available seat-nautical mile |
+| `Fare_per_Pax_NM` | Required fare per passenger-nautical mile |
+
+---
+
+## `run_comparison`
+
+```python
+run_comparison(file_list: List[str]) -> Tuple[pd.DataFrame, Dict[str, AnnualCosts]]
+```
+
+Processes multiple Excel files and assembles a comparison matrix.
+
+<ParamField path="file_list" type="List[str]" required>
+  List of paths to Excel workbooks. Each file is processed independently — errors are caught and printed without stopping the run.
+</ParamField>
+
+**Returns** a 2-tuple:
+
+| Position | Type | Description |
+|----------|------|-------------|
+| `[0]` | `pd.DataFrame` | Summary table, one row per aircraft |
+| `[1]` | `Dict[str, AnnualCosts]` | Full results keyed by aircraft display name |
+
+**DataFrame columns:**
+
+`Aircraft`, `Revenue_CASM`, `Fare_per_Pax_NM`, `Total_Annual_Costs`, `Life_Cycle_Total_Cost`, `Annual_Fixed_Costs`, `Annual_Variable_Costs`, `Aircraft_Purchase_Price`, `Variable_Cost_per_Hour`, `Aircraft_Speed`, `Pilots_per_Aircraft`, `PAX_Seats`
+
+---
+
+## `print_comparison_table`
+
+```python
+print_comparison_table(df: pd.DataFrame) -> None
+```
+
+Prints a formatted ASCII table to stdout, rows sorted by `Revenue_CASM` ascending.
+
+<ParamField path="df" type="pd.DataFrame" required>
+  DataFrame returned by `run_comparison`.
+</ParamField>
+
+---
+
+## `create_comparison_charts`
+
+```python
+create_comparison_charts(
+    df: pd.DataFrame,
+    full_results: Dict[str, AnnualCosts],
+    output_dir: Path
+) -> None
+```
+
+Saves three PNG files to `output_dir`.
+
+<ParamField path="df" type="pd.DataFrame" required>
+  Summary DataFrame from `run_comparison`.
+</ParamField>
+
+<ParamField path="full_results" type="Dict[str, AnnualCosts]" required>
+  Full results dict from `run_comparison`, used to access time series for the cumulative cost chart.
+</ParamField>
+
+<ParamField path="output_dir" type="Path" required>
+  Directory where PNGs are written. Must already exist.
+</ParamField>
+
+**Output files:**
+
+| File | Content |
+|------|---------|
+| `aircraft_comparison.png` | Side-by-side horizontal bar charts: Revenue CASM (left) and Fare per Pax-NM (right), sorted ascending, coloured with the viridis gradient |
+| `cumulative_costs.png` | Line plot of cumulative cost in millions USD over the service life, one line per aircraft |
+| `cost_breakdown_pies.png` | Grid of pie charts — one per aircraft — showing the proportion of amortization, depreciation, insurance, personnel, training, facilities, fuel, maintenance, and other variable costs |
+
+---
+
+## `extract_aircraft_name`
+
+```python
+extract_aircraft_name(filename: str) -> str
+```
+
+Parses a clean display name from an Excel filename.
+
+<ParamField path="filename" type="str" required>
+  File path or name, e.g. `Joby_S4_Cost_Model_1500hrs.xlsx`.
+</ParamField>
+
+**Returns** `str` — strips `_Cost_Model_<hours>hrs`, replaces underscores with spaces. Example: `"Joby S4"`.
+
+---
+
+## `AnnualCosts` dataclass
+
+All monetary values are in USD. All rate values are per flight hour unless noted.
+
+### Derived flight parameters
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `Pilots_per_Aircraft` | `float` | Number of pilots (crew count × pilots per crew) |
+| `Aircraft_Speed` | `float` | Average cruise speed, knots |
+| `Flight_Time_Hours` | `float` | Hours per mission stage |
+| `Flights_per_Hr` | `float` | Frequency of flights per hour |
+
+### Acquisition
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `Automation_Cost` | `float` | Autonomous systems premium (0 if crewed) |
+| `Aircraft_Purchase_Price` | `float` | Baseline cost + automation cost |
+| `Resale_Value` | `float` | Estimated residual value |
+
+### Annual fixed costs
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `Annual_Amortization` | `float` | Annual loan repayment |
+| `Annual_Depreciation` | `float` | Straight-line depreciation |
+| `Landing_Site_Annual_Support` | `float` | Vertiport support fees |
+| `Hull_Insurance` | `float` | Hull damage insurance |
+| `Liability_Insurance` | `float` | Third-party liability insurance |
+| `Maintenance_Software` | `float` | Software subscriptions |
+| `Miscellaneous_Service` | `float` | Miscellaneous service costs |
+| `Property_Tax` | `float` | Annual property tax |
+| `Hangar_and_Office_Expenses` | `float` | Facility and office lease |
+| `Pilots_Salaries` | `float` | Total pilot compensation |
+| `Staff_Salaries` | `float` | Total staff compensation |
+| `Personnel_Benefits` | `float` | Benefits on pilot salaries |
+| `Annual_Personnel_Costs` | `float` | Sum of all personnel costs |
+| `Annual_Training_Cost` | `float` | Pilot and maintenance training |
+| `Annual_Fixed_Costs` | `float` | **Sum of all fixed costs** |
+
+### Variable costs (per flight hour)
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `Maintenance_Hours_per_Flight_Hour` | `float` | Maintenance labour hours |
+| `Fuel_Burn_per_Hour` | `float` | Gallons per flight hour |
+| `Fuel_Cost_per_Hour` | `float` | Fuel cost per flight hour |
+| `Maintenance_Labor_per_Hour` | `float` | Maintenance labour cost |
+| `Schedule_Parts_per_Hour` | `float` | Scheduled parts allowance |
+| `Midlife_Inspection_per_Hour` | `float` | Mid-life inspection reserve |
+| `Propeller_Allowance_per_Hour` | `float` | Propeller maintenance reserve |
+| `Engine_Overhaul_per_Hour` | `float` | Engine overhaul amortised |
+| `Modernisation_per_Hour` | `float` | Avionics/systems upgrade reserve |
+| `Paint_per_Hour` | `float` | Paint maintenance reserve |
+| `Refurbishing_per_Hour` | `float` | Interior refurbishment reserve |
+| `Battery_per_Hour` | `float` | Battery pack replacement reserve |
+| `Miscellaneous_Trip_Expenses_per_Hour` | `float` | Consumables and trip costs |
+| `Landing_Fees_per_Hour` | `float` | Landing and handling fees |
+| `Total_Variable_Cost_per_Hour` | `float` | **Sum of all variable costs per hour** |
+| `Annual_Variable_Costs` | `float` | Variable costs × annual hours |
+
+### Totals
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `Total_Annual_Costs` | `float` | Fixed + variable costs |
+
+### Optional life cycle fields
+
+Populated by `calculate_metrics()` and `run_simulation()`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `time_series` | `Optional[np.ndarray]` | Time points (years) from ODE |
+| `cumulative_costs` | `Optional[np.ndarray]` | Cumulative total cost at each time point |
+| `Life_Cycle_Total_Cost` | `Optional[float]` | Total cost over service life |
+| `Revenue_CASM` | `Optional[float]` | Cost per available seat-nm |
+| `Fare_per_Pax_NM` | `Optional[float]` | Required fare per passenger-nm |
+| `PAX_Seats` | `Optional[float]` | Passenger seat count (copied from params) |
+
+---
+
+## Constants
+
+| Name | Value | Description |
+|------|-------|-------------|
+| `mile_to_nm` | `1.151` | Statute miles to nautical miles conversion |

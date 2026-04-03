@@ -1,45 +1,74 @@
 ---
-title: Regional Air Mobility Design Operations
-description: Overview of the RAM Design Operations project by Idopt Lab
+title: Overview
+description: Regional Air Mobility Design Operations — life cycle cost analysis for RAM vehicles
 ---
 
-## Overview
+## What is this?
 
-The Regional Air Mobility (RAM) Design Operations project provides tools and frameworks for designing, simulating, and evaluating regional air mobility systems.
+`ram-idopt` is a Python library for **life cycle cost (LCC) analysis** of regional air mobility (RAM) vehicles. It models the full economics of operating an aircraft over its service life — from acquisition financing through fuel, maintenance, personnel, and overhaul — and produces revenue metrics (CASM, fare per passenger-mile) that let you compare vehicle configurations on an apples-to-apples basis.
 
-## What's Included
+The model was developed at Virginia Tech and is grounded in the Trani et al. (2006) framework for nationwide impacts of very light jet traffic.
 
-- **Life Cycle Cost (LCC) Analysis** — models and computes the full lifecycle cost of RAM vehicles and operations
-- **Test Suite** — automated tests validating core computation logic
-- **Examples** — reference scripts demonstrating key workflows
+---
 
-## Getting Started
+## Key capabilities
 
-### Prerequisites
+<CardGroup cols={2}>
+  <Card title="40+ cost components" icon="calculator">
+    Fixed costs (amortization, insurance, personnel, training) and variable costs (fuel, maintenance, overhaul, landing fees) broken down individually.
+  </Card>
+  <Card title="ODE-based simulation" icon="chart-line">
+    Cumulative costs are integrated with a Runge-Kutta (RK45) solver over the full service life, giving year-by-year cost trajectories.
+  </Card>
+  <Card title="Revenue metrics" icon="dollar-sign">
+    Computes Revenue CASM (cost per available seat-nautical mile) and required fare per passenger-nautical mile, accounting for repositioning (deadhead) flights.
+  </Card>
+  <Card title="Multi-aircraft comparison" icon="table">
+    Pass a list of Excel configuration files to get a ranked comparison table and three chart types: bar charts, cumulative cost lines, and cost-breakdown pies.
+  </Card>
+</CardGroup>
 
-- Python 3.10+
-- Dependencies: `numpy`, `pandas`, `scipy`, `matplotlib`, `openpyxl`
+---
 
-### Install dependencies
+## Supported vehicle types
 
-```bash
-pip install numpy pandas scipy matplotlib openpyxl
+The model handles any fixed- or rotary-wing aircraft including:
+
+- **Conventional turboprop / piston** aircraft (crewed)
+- **Electric VTOL (eVTOL)** with battery replacement costs
+- **Autonomous / pilotless** aircraft — automation cost premium, adjusted insurance, zero pilot salaries
+- **Hybrid configurations** — partial automation, reduced crew counts
+
+---
+
+## Package structure
+
+```
+src/ram_idopt/
+├── aircraft/
+│   └── cost/
+│       └── LCC.py          # Core life cycle cost model
+├── operations/             # (planned) route and schedule analysis
+├── visualization/          # (planned) extended plotting utilities
+└── utils/                  # (planned) shared helpers
 ```
 
-### Run tests
+---
 
-```bash
-python -m unittest discover -s tests -p "test*.py"
-```
+## Authors
 
-## Repository Structure
+Developed by the Idopt Lab at Virginia Tech:
 
-```
-regional-air-mobility-design-operations/
-├── docs/          # Documentation
-├── examples/      # Example scripts
-├── tests/         # Test suite
-└── LCC.py         # Life Cycle Cost analysis module
-```
+- Darshan Sarojini
+- Antonio Trani
+- Zhou Wang
+- Grant Lee
+- Krish Bhatt
+- Dylan Hogge
+- Aman Anwar
 
+---
 
+## Citation
+
+> Trani, A., et al. (2006). *Nationwide Impacts of Very Light Jet Traffic in NGATS*. Virginia Tech Air Transportation Systems Laboratory.

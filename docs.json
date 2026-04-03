@@ -1,27 +1,20 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Idopt Lab",
+  "name": "Idopt Docs",
   "colors": {
-    "primary": "#2563EB",
-    "light": "#3B82F6",
-    "dark": "#1D4ED8"
-  },
-  "favicon": "/favicon.svg",
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "GitHub",
-        "href": "https://github.com/idopt-lab"
-      }
-    ]
+    "primary": "#8d1c32",
+    "light": "#c2192c",
+    "dark": "#801416"
   },
   "navigation": {
     "tabs": [
+      {
+        "tab": "Home",
+        "pages": [
+          "untitled-page"
+        ]
+      },
       {
         "tab": "Regional Air Mobility",
         "groups": [
@@ -74,6 +67,19 @@
       }
     ]
   },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/idopt-lab"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Dashboard",
+      "href": "https://dashboard.mintlify.com"
+    }
+  },
   "contextual": {
     "options": [
       "copy",
@@ -88,7 +94,7 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/idopt-lab"
+      "github": "https://github.com/mintlify"
     }
   }
 }

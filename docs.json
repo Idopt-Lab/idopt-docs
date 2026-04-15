@@ -78,6 +78,7 @@
             "group": "Guides",
             "pages": [
               "web-visuals/guides/data-update-playbook",
+              "web-visuals/guides/dataset-api-r2-sync",
               "web-visuals/guides/docs-publishing-cicd",
               "web-visuals/guides/new-metric-checklist"
             ]

@@ -64,6 +64,25 @@
             ]
           }
         ]
+      },
+      {
+        "tab": "Web Visuals",
+        "groups": [
+          {
+            "group": "Web Visuals",
+            "pages": [
+              "web-visuals/overview"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "web-visuals/guides/data-update-playbook",
+              "web-visuals/guides/docs-publishing-cicd",
+              "web-visuals/guides/new-metric-checklist"
+            ]
+          }
+        ]
       }
     ]
   },
@@ -73,12 +92,7 @@
         "label": "GitHub",
         "href": "https://github.com/idopt-lab"
       }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
+    ]
   },
   "contextual": {
     "options": [
@@ -94,7 +108,7 @@
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/mintlify"
+      "github": "https://github.com/idopt-lab"
     }
   }
 }

@@ -15,13 +15,10 @@ from air_travel_model import TransportPredictor
 tp = TransportPredictor()
 results = tp.predict_all("CHS", "ROA", quarter=2)
 # {
-#   "air_fare":   {"price": 187.42, "currency": "USD"},
-#   "air_time":   {"time_minutes": 98},
-#   "drive_time": {"time_minutes": 324, "distance_miles": 370},
-#   "drive_fare": {"price": 46.25, "currency": "USD"},
-#   "bus_fare":   {"price": 62.00, "currency": "USD"},
-#   "bus_time":   {"time_minutes": 412},
-#   "train_time": {"time_minutes": 510},
+#   "air_fare":   291.81,   # USD
+#   "air_time":    59.0,    # minutes
+#   "drive_time": 454.0,    # minutes
+#   "drive_fare":  46.25,   # USD
 # }
 ```
 
@@ -31,17 +28,18 @@ results = tp.predict_all("CHS", "ROA", quarter=2)
 |------|--------|----|---------------|
 | Air fare | Economy / business fare (USD) | 0.92 | BTS DB1B 2023–2025 |
 | Air time | Block time (minutes) | 0.94 | BTS T-100 2023–2025 |
-| Drive time | Door-to-door drive time | 0.99 | OSRM / OpenStreetMap |
-| Drive fare | Fuel cost estimate | — | Formula-based |
-| Bus fare | Intercity fare | — | Calibrated heuristic |
-| Bus time | Intercity travel time | — | Calibrated heuristic |
-| Train time | Amtrak travel time | 0.99 | Amtrak GTFS |
+| Drive time | Door-to-door drive time (minutes) | 0.99 | OSRM / OpenStreetMap |
+| Drive fare | Fuel cost estimate (USD) | — | Formula-based |
+| Bus fare | Intercity fare (USD) | — | Calibrated heuristic |
+| Bus time | Intercity travel time (minutes) | — | Calibrated heuristic |
+| Train time | Amtrak travel time (minutes) | 0.99 | Amtrak GTFS |
 
-All models fall back to calibrated heuristics for routes outside the training distribution.
+All models fall back gracefully to calibrated heuristics for routes outside the training distribution.
 
 ## Design
 
 - **Single entry point**: `TransportPredictor` — no need to import individual predictors.
 - **Ensemble architecture**: each trained model is either HistGradientBoosting, RandomForest, or an average ensemble — whichever scored best on validation.
-- **Graceful degradation**: `predict()` uses ML; `estimate()` uses heuristics — both always return a value.
+- **Graceful degradation**: `predict()` uses ML with OSRM/heuristic fallbacks; `estimate()` always returns a value.
+- **Mountainous terrain aware**: drive time for routes not in training data queries OSRM live rather than using straight-line (haversine) distance, which would dramatically underestimate travel time on winding mountain roads.
 - **Extensible**: abstract `BaseTrainer` / `BasePredictor` make it straightforward to add new modes.

@@ -60,7 +60,8 @@
             "group": "Guides",
             "pages": [
               "air-travel-model/guides/adding-a-model",
-              "air-travel-model/guides/retraining"
+              "air-travel-model/guides/retraining",
+              "air-travel-model/guides/routing-fallback"
             ]
           }
         ]

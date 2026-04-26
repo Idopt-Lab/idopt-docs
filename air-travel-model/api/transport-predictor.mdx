@@ -16,73 +16,80 @@ On instantiation, `TransportPredictor` loads all available `.pkl` model files fr
 
 ## Methods
 
-### `predict(model, origin, destination, **kwargs)`
+### `predict(model, origin, destination, **kwargs) -> float | None`
 
-Runs the ML model for the given mode. Raises `ValueError` if the route has no training data and no fallback is available.
+Runs the ML model for the given mode. Returns a `float` (time in minutes or cost in USD), or `None` if the model is not loaded.
+
+For `drive_time`, routes not in the training dataset fall back to a live OSRM query before returning `None`. See [Routing Fallback](/guides/routing-fallback).
 
 ```python
-result = tp.predict("air_fare", "CHS", "ROA", quarter=2, is_business=False)
-# {"price": 187.42, "currency": "USD"}
+fare     = tp.predict("air_fare",   "CHS", "ROA", quarter=2, is_business=False)
+air_min  = tp.predict("air_time",   "CHS", "ROA", quarter=2)
+drv_min  = tp.predict("drive_time", "CHS", "ROA")
 ```
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `model` | `str` | Model name (see table below) |
-| `origin` | `str \| tuple` | IATA code, city name, or `(lat, lon)` |
+| `model` | `str` | Model name — see table below |
+| `origin` | `str \| tuple` | IATA code, `"City, ST"`, or `(lat, lon)` |
 | `destination` | `str \| tuple` | Same as origin |
-| `**kwargs` | | Model-specific options (see below) |
+| `**kwargs` | | Model-specific options — see table below |
+
+Raises `ValueError` for unrecognised location strings.
 
 ---
 
-### `estimate(model, origin, destination, **kwargs)`
+### `estimate(model, origin, destination, **kwargs) -> float | None`
 
-Heuristic estimate — always returns a value, even for unseen routes. Use this when you need a fallback or when the route is outside the training distribution.
+Heuristic estimate — intended as a guaranteed fallback when `predict()` returns `None` or the model is not loaded.
+
+For `drive_time`, `estimate()` also queries OSRM first and only falls back to the haversine formula if OSRM is unavailable.
 
 ```python
-result = tp.estimate("drive_time", "BFD", "UNV")
-# {"time_minutes": 142, "distance_miles": 152}
+result = tp.estimate("drive_time", "BFD", "UNV")   # always returns a value
 ```
 
 ---
 
-### `predict_all(origin, destination, **kwargs)`
+### `predict_all(origin, destination, **kwargs) -> dict`
 
-Runs `predict()` for all loaded models and returns a combined dict. Models that fail silently return `None` for that key.
+Calls `predict()` for all loaded models and returns a `{model_name: float}` dict. Models that return `None` are omitted from the result.
 
 ```python
-results = tp.predict_all("CHS", "ROA", quarter=2)
+results = tp.predict_all("CRW", "ATL", quarter=2)
+# {"air_fare": 253.74, "air_time": 59.0, "drive_time": 595.0, "drive_fare": 58.49}
 ```
 
 ---
 
-### `estimate_all(origin, destination, **kwargs)`
+### `estimate_all(origin, destination) -> dict`
 
-Runs `estimate()` for all models. Always returns a complete dict.
+Calls `estimate()` for all models. Returns a `{model_name: float}` dict, skipping any model whose `estimate()` raises or returns `None`.
 
 ---
 
-### `available`
+### `available -> list[str]`
 
-Returns the list of model names with loaded trained data.
+Returns model names that have a trained `.pkl` loaded.
 
 ```python
 print(tp.available)
-# ["air_fare", "air_time", "drive_time", "drive_fare", "bus_fare", "bus_time", "train_time"]
+# ["air_fare", "air_time", "drive_time", "drive_fare", ...]
 ```
 
 ---
 
 ## Model names and kwargs
 
-| Model name | Output key | Required kwargs | Optional kwargs |
-|-----------|-----------|-----------------|-----------------|
-| `air_fare` | `price` (USD) | `quarter` (1–4) | `is_business` (bool, default `False`) |
-| `air_time` | `time_minutes` | `quarter` (1–4) | — |
-| `drive_time` | `time_minutes`, `distance_miles` | — | — |
-| `drive_fare` | `price` (USD) | — | `gas_price` ($/gal), `mpg` |
-| `bus_fare` | `price` (USD) | `quarter` (1–4) | `is_premium` (bool, default `False`) |
-| `bus_time` | `time_minutes` | `quarter` (1–4) | — |
-| `train_time` | `time_minutes` | `quarter` (1–4) | — |
+| Model name | Unit | Required kwargs | Optional kwargs |
+|-----------|------|-----------------|-----------------|
+| `air_fare` | USD | `quarter` (1–4) | `is_business` (bool, default `False`) |
+| `air_time` | minutes | `quarter` (1–4) | — |
+| `drive_time` | minutes | — | — |
+| `drive_fare` | USD | — | `gas_price` ($/gal, default `3.50`), `mpg` (default `28`) |
+| `bus_fare` | USD | `quarter` (1–4) | `is_premium` (bool, default `False`) |
+| `bus_time` | minutes | `quarter` (1–4) | — |
+| `train_time` | minutes | `quarter` (1–4) | — |
 
 ---
 
@@ -91,7 +98,9 @@ print(tp.available)
 Locations are resolved through `air_travel_model.resolvers.location.resolve()`:
 
 - **IATA code** (`"CHS"`) — direct lookup in `airports.csv`
-- **City name** (`"Charleston, SC"`) — fuzzy-matched to nearest airport
-- **`(lat, lon)` tuple** — nearest airport by haversine distance
+- **City name** (`"Charleston, SC"`) — matched against `city, state` entries in `airports.csv`
+- **`(lat, lon)` tuple** — used directly for coordinate-based routing; no IATA code is assigned, so models that require a code for route-stats lookup (air_fare, air_time) will fall back to their heuristics
 
-For `train_time`, `origin` and `destination` are additionally resolved against `amtrak_stations.csv`. Amtrak station codes (`"NYP"`, `"WAS"`, `"CHI"`) give the best accuracy because the model was trained on station-to-station pairs.
+Raises `ValueError` with a descriptive message for unrecognised strings.
+
+For `train_time`, origins and destinations are additionally resolved against `amtrak_stations.csv`. Amtrak station codes (`"NYP"`, `"WAS"`, `"CHI"`) give the best accuracy because the model was trained on station-to-station pairs.

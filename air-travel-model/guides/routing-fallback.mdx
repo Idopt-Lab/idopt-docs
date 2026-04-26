@@ -1,0 +1,67 @@
+---
+title: Drive Time Routing Fallback
+description: How drive_time handles routes outside its training data, and why this matters for mountainous regions
+---
+
+## The problem with straight-line distance
+
+The drive time ML model was trained on OSRM-derived road times for ~1,800 airport pairs. When a requested route is not in that set, the predictor needs to estimate the road distance somehow.
+
+A naive approach — using great-circle (haversine) distance as a proxy for road distance — works acceptably on flat terrain but fails badly in mountainous regions. Roads through the Appalachians, Rockies, or Ozarks wind significantly more than the crow flies. On a route like Roanoke VA → Pittsburgh PA (219 mi straight-line), the actual road distance is closer to 290 mi with a drive time of ~420 minutes — a haversine-based model would predict roughly 250 minutes, a 40% underestimate.
+
+## Fallback chain
+
+For any route **not found in the training route_stats**, `DriveTimePredictor` follows this chain:
+
+```
+1. OSRM live query  →  returns actual road time (minutes)
+2. Haversine formula  →  dist × 1.15 / 65 mph × 60  (last resort if OSRM is down)
+```
+
+The same chain applies to both `predict()` and `estimate()`.
+
+Routes **in route_stats** (those seen during training) always use the stored road distance and the ML ensemble — OSRM is not queried.
+
+## OSRM public endpoint
+
+The predictor uses the public OSRM API at `routing.openstreetmap.de`. No API key is required. Responses are cached in memory for the lifetime of the `TransportPredictor` instance, so repeated calls for the same pair incur only one network request.
+
+```python
+tp = TransportPredictor()
+
+# First call — OSRM queried, result cached
+t1 = tp.predict("drive_time", "ROA", "PIT")
+
+# Second call — served from cache, no network
+t2 = tp.predict("drive_time", "ROA", "PIT")
+assert t1 == t2
+```
+
+If the OSRM query times out or returns an error after two attempts, the predictor falls back to the haversine formula.
+
+## West Appalachia accuracy
+
+After this fix, drive time accuracy across West Appalachian routes:
+
+| Route | Straight-line | OSRM truth | Before fix | After fix |
+|-------|---------------|------------|------------|-----------|
+| ROA → PIT | 219 mi | 423 min | 248 min (−41%) | 423 min (0%) |
+| TRI → CLT | 120 mi | 233 min | 135 min (−42%) | 233 min (0%) |
+| LEX → CLT | 281 mi | 479 min | 334 min (−30%) | 479 min (0%) |
+| CRW → PIT | 163 mi | 270 min | 273 min (+1%) | 273 min (+1%) |
+
+Routes already in route_stats (CRW, CKB, BKW) were unaffected — they were accurate before and remain so.
+
+Mean absolute error across 20 WA routes: **0.9%**.
+
+## Air fare — sparse route handling
+
+A related fix applies to `AirFarePredictor`. Routes with fewer than 10 DB1B tickets (too sparse to pass training filters) fall back to generic market defaults. Previously the default used a hardcoded `distance = 1500 miles`, which inflated fare estimates for short regional routes.
+
+The fix resolves the actual great-circle distance between origin and destination and uses that instead:
+
+```python
+# CRW -> PIT  (~163 mi, sparse in DB1B)
+# Before: model received distance=1500 → overestimated fare
+# After:  model receives distance=163  → ~$218 economy (reasonable)
+```

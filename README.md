@@ -1,55 +1,22 @@
-# Mintlify Starter Kit
+# IDOpt Lab Documentation
 
-Use the starter kit to get your docs deployed and ready to customize.
+Single documentation site for IDOpt Lab research software, built with [Mintlify](https://mintlify.com).
 
-Click the green **Use this template** button at the top of this repo to copy the Mintlify starter kit. The starter kit contains examples with
+## How it works
 
-- Guide pages
-- Navigation
-- Customizations
-- API reference pages
-- Use of popular components
+Docs live next to the code. Each project repo keeps its own `docs/*.mdx`; a `sync-docs` GitHub Action in that repo copies changed pages into a subfolder here and rebuilds the navigation tab automatically. **Do not hand-edit the project subfolders in this repo** — edit `docs/` in the source repo instead.
 
-**[Follow the full quickstart guide](https://starter.mintlify.com/quickstart)**
+| Site tab | Source repo |
+|---|---|
+| Regional Air Mobility | [regional-air-mobility-design-operations](https://github.com/Idopt-Lab/regional-air-mobility-design-operations) |
+| Air Travel Model | [airTravelModel](https://github.com/Idopt-Lab/airTravelModel) |
+| Web Visuals | [webVisuals](https://github.com/Idopt-Lab/webVisuals) |
 
-## AI-assisted writing
+Pages edited directly in this repo: `index.mdx` (home) and `docs.json` (site config).
 
-Set up your AI coding tool to work with Mintlify:
-
-```bash
-npx skills add https://mintlify.com/docs
-```
-
-This command installs Mintlify's documentation skill for your configured AI tools like Claude Code, Cursor, Windsurf, and others. The skill includes component reference, writing standards, and workflow guidance.
-
-See the [AI tools guides](/ai-tools) for tool-specific setup.
-
-## Development
-
-Install the [Mintlify CLI](https://www.npmjs.com/package/mint) to preview your documentation changes locally. To install, use the following command:
+## Local preview
 
 ```
 npm i -g mint
-```
-
-Run the following command at the root of your documentation, where your `docs.json` is located:
-
-```
 mint dev
 ```
-
-View your local preview at `http://localhost:3000`.
-
-## Publishing changes
-
-Install our GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app) to propagate changes from your repo to your deployment. Changes are deployed to production automatically after pushing to the default branch.
-
-## Need help?
-
-### Troubleshooting
-
-- If your dev environment isn't running: Run `mint update` to ensure you have the most recent version of the CLI.
-- If a page loads as a 404: Make sure you are running in a folder with a valid `docs.json`.
-
-### Resources
-- [Mintlify documentation](https://mintlify.com/docs)

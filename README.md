@@ -12,7 +12,7 @@ Docs live next to the code. Each project repo keeps its own `docs/*.mdx`; a `syn
 | Air Travel Model | [airTravelModel](https://github.com/Idopt-Lab/airTravelModel) |
 | Web Visuals | [webVisuals](https://github.com/Idopt-Lab/webVisuals) |
 
-Pages edited directly in this repo: `index.mdx` (home) and `docs.json` (site config).
+Pages edited directly in this repo: `untitled-page.mdx` (home) and `docs.json` (site config).
 
 ## Local preview
 

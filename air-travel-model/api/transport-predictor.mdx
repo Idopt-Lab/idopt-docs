@@ -1,6 +1,6 @@
 ---
 title: TransportPredictor
-description: Unified API for all transport cost and time models
+description: Legacy methods; the canonical unified quote contract is in docs.md
 ---
 
 ## Import
@@ -16,11 +16,15 @@ On instantiation, `TransportPredictor` loads all available `.pkl` model files fr
 
 ## Methods
 
+For new integrations, use `quote` and `quote_many`, documented in the root
+`docs.md`. The methods below are legacy interfaces with different result shapes
+and possible routing calls; their existence does not imply all artifacts are loaded.
+
 ### `predict(model, origin, destination, **kwargs) -> float | None`
 
 Runs the ML model for the given mode. Returns a `float` (time in minutes or cost in USD), or `None` if the model is not loaded.
 
-For `drive_time`, routes not in the training dataset fall back to a live OSRM query before returning `None`. See [Routing Fallback](/guides/routing-fallback).
+For `drive_time`, routes not in the training dataset fall back to a live OSRM query before returning `None`. See [Routing Fallback](/air-travel-model/guides/routing-fallback).
 
 ```python
 fare     = tp.predict("air_fare",   "CHS", "ROA", quarter=2, is_business=False)
@@ -41,12 +45,12 @@ Raises `ValueError` for unrecognised location strings.
 
 ### `estimate(model, origin, destination, **kwargs) -> float | None`
 
-Heuristic estimate — intended as a guaranteed fallback when `predict()` returns `None` or the model is not loaded.
+Heuristic estimate. It can return `None` or raise for missing or invalid inputs.
 
 For `drive_time`, `estimate()` also queries OSRM first and only falls back to the haversine formula if OSRM is unavailable.
 
 ```python
-result = tp.estimate("drive_time", "BFD", "UNV")   # always returns a value
+result = tp.estimate("drive_time", "BFD", "UNV")
 ```
 
 ---
@@ -64,7 +68,31 @@ results = tp.predict_all("CRW", "ATL", quarter=2)
 
 ### `estimate_all(origin, destination) -> dict`
 
-Calls `estimate()` for all models. Returns a `{model_name: float}` dict, skipping any model whose `estimate()` raises or returns `None`.
+Calls `estimate()` for all models. Exceptions are skipped; `None` values can remain.
+
+---
+
+### `plan_trip(origin, destination, party_size=1, **kwargs) -> dict`
+
+Builds a door-to-door comparison across:
+
+- drive-only
+- drive + commercial air + drive
+- drive + RAM aircraft + drive for routes under the RAM threshold
+- drive + RAM aircraft to a hub + commercial flight legs + drive for longer routes
+
+Costs are reported per passenger. Drive costs use an AAA-style all-in per-mile rate and are shared across the party size. RAM costs use the party-size-aware RAM aircraft cost curve.
+
+```python
+trip = tp.plan_trip("Charleston, SC", "Roanoke, VA", party_size=3, quarter=2)
+trip["options"]["ram_aircraft"]["cost_per_passenger_usd"]
+```
+
+Optional kwargs include `departure_date`, `aaa_cost_per_mile`, `vehicle_capacity`, `ram_direct_threshold_miles`, `include_navigation`, `drive_provider`, `osrm_url`, `osrm_geometry`, `ram_flight_speed_knots`, `ram_seat_count`, and the RAM cost-curve coefficients.
+
+This legacy planner can make network routing calls depending on `drive_provider`.
+OSRM is not offline. Use the new `quote` API for offline estimation; it is not a
+drop-in replacement for a full door-to-door itinerary planner.
 
 ---
 

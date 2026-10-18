@@ -1,0 +1,205 @@
+---
+title: Transit Price Prediction Models
+description: One offline interface for transport estimates, with explicit sources and missing-data status
+---
+
+## What is unified
+
+`TransportPredictor.quote()` returns the same price/time contract for air, RAM,
+driving, bus and train. `quote_many()` preserves request order, including invalid
+or unavailable rows. This is interface unification, not evidence that every mode
+has a trained model. Existing `predict`, `estimate` and `plan_trip` calls remain
+available for compatibility and have different legacy behavior.
+
+The repository is `Idopt-Lab/transitPricePredictionModels`. The Python distribution
+remains `airTravelModel` and the import remains `air_travel_model`.
+
+## Install and run
+
+Use Python 3.11 or newer. The repository and its model artifacts require access.
+
+```bash
+git clone https://github.com/Idopt-Lab/transitPricePredictionModels.git
+cd transitPricePredictionModels
+python -m venv .venv
+source .venv/bin/activate
+pip install -e '.[test]'
+python example.py --origin ROA --destination CLT
+python example.py --mode bus --origin ROA --destination CLT --allow-heuristic
+```
+
+Check out the unified-API feature branch until its PR is merged. Artifacts load
+from `src/air_travel_model/data`, or `TSAM_DATA_DIR` when explicitly configured.
+Do not load untrusted pickle artifacts.
+
+## Python API
+
+```python
+from air_travel_model import TransportPredictor
+
+predictor = TransportPredictor()
+flight = predictor.quote('air', 'ROA', 'LAX', max_connections=2)
+ram = predictor.quote('ram', 'BCB', 'ROA', ram_max_leg_miles=300)
+results = predictor.quote_many([
+    {'mode': 'air', 'origin': 'ROA', 'destination': 'CLT'},
+    {'mode': 'drive', 'origin': 'ROA', 'destination': 'CLT'},
+    {'mode': 'bus', 'origin': 'ROA', 'destination': 'CLT', 'allow_heuristic': True},
+])
+```
+
+Create the predictor once and reuse it. `quote_many` is an ordered convenience
+batch (up to 2,500 requests), not a vectorized all-mode inference promise.
+No routing API calls are made by these two methods.
+
+## Response contract
+
+| Field | Meaning |
+| --- | --- |
+| `schema_version` | Currently `1` |
+| `mode`, `origin`, `destination` | Requested mode and endpoints |
+| `status` | `estimated`, `partial`, `unavailable`, `invalid_input`, or `error` |
+| `price_usd` | One-way modeled USD amount, or `null` |
+| `time_minutes` | One-way modeled minutes, or `null` |
+| `price_basis` | Per passenger, except driving is per vehicle |
+| `price_source`, `time_source` | Observation/model/formula provenance |
+| `fare_data_through`, `time_data_through` | Coverage period when available |
+| `distance_miles` | Great-circle statute miles, not road or rail distance |
+| `itinerary` | Commercial airport sequence and connection count, otherwise `null` |
+| `service_evidence` | Historical air legs, hypothetical RAM, or `not_checked` |
+| `live_quote` | Always `false` for this API |
+| `reason`, `warnings` | Why values are missing and what the estimate does not establish |
+
+`estimated` means both numerical outputs exist. It does **not** certify a
+bookable service, schedule, accessible road, runway compatibility, or price
+accuracy. `partial` means only price or time exists. Missing is never a free trip.
+Malformed settings produce `invalid_input`; unknown keyword arguments raise
+`TypeError` in scalar use and become aligned invalid rows in batch use.
+
+## Mode behavior and defaults
+
+### Commercial air
+
+Use three-letter airport codes. Fares are whole origin-destination market averages:
+published/recorded averages where covered, otherwise the existing fare model.
+They are not lowest-price searches, class-specific quotes, or prices specifically
+for the returned connecting itinerary. Two leg fares are not added together.
+
+`max_connections` is an integer from 0 to 8 (default 2). Eight connections means
+nine flight legs. Paths use historically observed legs and modeled connection
+dwell, not a live timetable. The 300-mile RAM limit does not limit commercial air.
+`quarter` does not choose a departure date or modify the current market-average
+contract in `quote('air', ...)`.
+
+### RAM
+
+RAM is a hypothetical operating-cost estimate, not a trained airline fare model.
+Default cap: **300 statute miles per leg**. Longer direct legs return
+`ram_leg_exceeds_range`; the predictor does not manufacture a chain of RAM hops.
+
+| Setting | Default |
+| --- | --- |
+| `ram_max_leg_miles` | 300 |
+| `ram_load_factor` | 0.6 |
+| `ram_seat_count` | 37 |
+| `ram_annual_utilization_hours` | 1800 |
+| `ram_profit_margin` | 0.05 |
+| `ram_speed_knots` | 175 |
+
+The reused ERJ-135 formula is distance in nautical miles times
+`(8.2038 + 2232.43 / annual_hours) / (seats * load_factor) * (1 + margin)`.
+This is shared-seat pricing. Legacy `plan_trip` instead spreads a whole aircraft's
+cost across the traveling party; those assumptions are not interchangeable.
+Changing seat count alone does not calibrate a different aircraft.
+
+The supplied ACEIR draft's Table 2 uses 1,500 annual hours, 300 statute miles,
+10% deadhead and 10% profit. Its nine-seat turbo-electric concept is **not** the
+37-seat cost fit above. This API does not reproduce the paper's full life-cycle
+or coupled demand/fleet solve, and does not add deadhead costs a second time.
+
+### Driving
+
+Time uses the existing offline driving model. Distance is great-circle times 1.15;
+price is that distance times `drive_cost_per_mile` (default 0.66), **per vehicle**.
+This is not fuel-only pricing and does not include tolls or parking separately.
+Road connectivity, islands and international border feasibility are not checked.
+If the time artifact is absent, time remains missing unless heuristics are enabled.
+
+### Bus
+
+No trained bus artifacts were present in the checked checkout. By default price
+and time are missing. Explicit `allow_heuristic=True` enables the existing fare
+rule: base $12 plus `0.10 * (great_circle_miles * 1.25) ** 0.82`, with quarter,
+short-trip and minimum-fare factors. Those factors have not been validated here.
+
+The unified API now anchors bus time to the same offline driving time, adds a
+12% detour, 20 minutes of overhead and five minutes per 100 proxy road miles.
+If the drive model is missing, it uses an explicitly labeled 65-mph baseline.
+This fixes inconsistent independent speed assumptions; it is not bus schedule
+training. Service existence, transfers and fares still need observed data.
+
+### Train
+
+Train station codes require `amtrak_stations.csv`. Airports are not silently
+substituted for stations. No trained train-time artifact or registered train-fare
+predictor was present in the checked checkout. Coordinates may explicitly exercise
+the optional time heuristic (48 mph, 1.15 detour, stop overhead), but that does not
+establish a rail route. Time-only estimates have `partial` status, never a fake fare.
+
+## Hosted API
+
+The deployment source adds `POST /quotes`, taking a JSON list of up to 500 request
+objects and returning the same ordered list as Python. Body limit: 64 KiB. Invalid
+envelopes return 400, unsupported content type 415, oversized bodies 413, and
+service failures 503. Per-row input/data problems remain explicit result statuses.
+
+```json
+[
+  {"mode": "air", "origin": "ROA", "destination": "CLT", "max_connections": 0},
+  {"mode": "ram", "origin": "BCB", "destination": "ROA", "ram_max_leg_miles": 300}
+]
+```
+
+Deployed and smoke-tested on 2026-10-18 at:
+`https://travel-preference-survey--air-travel-model-fastapi-app.modal.run/quotes`.
+The checks exercised air, RAM range rejection, bus opt-in and train JSON coordinates.
+The legacy `/predict_all` endpoint passed its separate compatibility smoke test.
+These are deployment checks, not accuracy certification. The app scales to zero;
+container limits reduce spend but do not guarantee a zero monthly bill.
+
+## Reproduce the 500-route check
+
+```bash
+python scripts/validate_500_routes.py --output validation/my_run
+python -m pytest tests/test_quotes.py tests/test_survey_flights.py
+```
+
+The output directory must not exist. The script writes CSV results, full JSON
+results and a summary with model hashes. There are 462 directed pairs among 22
+chosen Appalachian/nearby airports and 38 long-distance stress pairs: 500 distinct
+routes and 2,500 mode results. This is motivated by the paper's region, **not a
+500-route list from the paper**, and not proof that these are the study's exact airports.
+
+Strict model coverage and optional heuristic coverage are reported separately.
+Train checks use airport coordinates explicitly and are formula tests, not 500
+verified train journeys. Tests cover invalid coordinates/settings, absent models,
+same endpoints, RAM range boundaries, connection limits, nonfinite outputs and
+batch alignment. This is not an exhaustive proof of all possible edge cases.
+
+Google Flights spot checks use one adult, one way, economy including Basic,
+USD and a recorded departure date. A displayed future ticket is a different target
+from a historical market average. Record the discrepancy, but do not label it
+model MAPE or fit the model to a handful of cheapest fares. Google cannot validate
+hypothetical RAM fares, and these checks do not validate bus/train prices.
+
+## Mintlify publishing
+
+`docs.md` is the canonical source. Run `python scripts/build_mintlify.py` to generate
+`docs/api/quotes.mdx` for the existing lab publishing pipeline, plus the standalone
+`docs_site/index.mdx` and `docs_site/docs.json` preview.
+
+The existing **Sync Docs to Mintlify** workflow copies `docs/` into
+`Idopt-Lab/idopt-docs/air-travel-model/` using its `DOCS_PUSH_TOKEN` secret.
+It runs after relevant changes reach `main`, or through manual dispatch.
+The old `air-travel-model` URL prefix is retained; the navigation tab becomes
+**Transit Price Models**. Mintlify then builds the central documentation repository.
+Check both the sync action and the Mintlify deployment before claiming publication.

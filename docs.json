@@ -34,6 +34,7 @@
           {
             "group": "Guides",
             "pages": [
+              "regional-air-mobility-design-operations/guides/sandbox",
               "regional-air-mobility-design-operations/guides/cost-model",
               "regional-air-mobility-design-operations/guides/input-format"
             ]

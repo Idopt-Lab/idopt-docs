@@ -1,6 +1,6 @@
 ---
 title: Overview
-description: Regional Air Mobility Design Operations — life cycle cost analysis for RAM vehicles
+description: Aircraft life cycle costs, county travel comparisons and RAM demand calculations
 ---
 
 ## What is this?
@@ -8,6 +8,11 @@ description: Regional Air Mobility Design Operations — life cycle cost analysi
 `ram-idopt` is a Python library for **life cycle cost (LCC) analysis** of regional air mobility (RAM) vehicles. It models the full economics of operating an aircraft over its service life — from acquisition financing through fuel, maintenance, personnel, and overhaul — and produces revenue metrics (CASM, fare per passenger-mile) that let you compare vehicle configurations on an apples-to-apples basis.
 
 The model was developed at Virginia Tech and is grounded in the Trani et al. (2006) framework for nationwide impacts of very light jet traffic.
+
+The repository also contains Grant's county travel and RAM demand calculations.
+The [sandbox guide](/regional-air-mobility-design-operations/guides/sandbox)
+explains the hosted demo, JSON inputs, selectable baseline and predictor data,
+and the difference between a ticket fare and the study's full round-trip cost.
 
 ---
 
@@ -43,12 +48,12 @@ The model handles any fixed- or rotary-wing aircraft including:
 
 ## Package structure
 
-```
+```text
 src/ram_idopt/
 ├── aircraft/
 │   └── cost/
 │       └── LCC.py          # Core life cycle cost model
-├── operations/             # (planned) route and schedule analysis
+├── operations/             # County journey, demand and network calculations
 ├── visualization/          # (planned) extended plotting utilities
 └── utils/                  # (planned) shared helpers
 ```

@@ -10,8 +10,17 @@ the repository root; `scripts/build_mintlify.py` builds its publishing directory
 
 Commercial air reuses existing observed averages and trained predictors. RAM
 uses an operating-cost formula. Driving uses an offline time model with a
-distance-based vehicle cost. Bus/train are not claimed trained or complete:
-missing artifacts are explicit, heuristics require opt-in, and train fare is absent.
+distance-based vehicle cost. Virginia Breeze uses published fares and dated bus
+schedules. Amtrak and Acela use recorded single-train schedules, refreshed daily
+in the hosted service. Rail fares require an explicit opt-in to an aggregate-based
+estimate; they are not trained on dated ticket prices. Generic bus heuristics
+also require opt-in.
+
+The survey and sandbox share the predictor engine. Grant's county study retains
+its original bus/rail baseline and offers the new inputs as a selectable option.
+Use the [API reference](/air-travel-model/api/quotes) for price/time explanations,
+connection settings, schedule freshness and hosted examples. Use the
+[sandbox guide](/regional-air-mobility-design-operations/guides/sandbox) for county studies.
 
 Interface tests are not price-accuracy evidence. Historical average fares are
 not live ticket quotes. No new mode was trained merely by adding the unified API.

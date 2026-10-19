@@ -5,8 +5,12 @@ description: Install ram-idopt and run your first life cycle cost analysis in un
 
 ## Requirements
 
-- Python 3.10 or later
-- An Excel parameter file describing your aircraft (see [Input Format](/guides/input-format))
+For the travel comparison website and county inputs, use the
+[sandbox guide](/regional-air-mobility-design-operations/guides/sandbox).
+The examples below cover the separate aircraft life cycle cost workflow.
+
+- Python 3.11 or later
+- An Excel parameter file describing your aircraft (see [Input format](/regional-air-mobility-design-operations/guides/input-format))
 
 ---
 
@@ -37,10 +41,8 @@ This pulls in all required dependencies automatically (`numpy`, `pandas`, `scipy
 ```python
 from ram_idopt.aircraft.cost.LCC import load_parameters, calculate_metrics
 
-# Load parameters from your Excel config file
 params = load_parameters("MyAircraft_Cost_Model_1500hrs.xlsx")
 
-# Compute all cost metrics
 results = calculate_metrics(params)
 
 print(f"Total annual cost:      ${results.Total_Annual_Costs:,.0f}")
@@ -65,16 +67,14 @@ files = list(Path("configs/").glob("*Cost_Model*.xlsx"))
 
 df, full_results = run_comparison(files)
 
-# Print ranked table to console
 print_comparison_table(df)
 
-# Save bar charts, cumulative cost lines, and cost-breakdown pies
 create_comparison_charts(df, full_results, output_dir=Path("outputs/"))
 ```
 
 **Console output (example):**
 
-```
+```text
 Aircraft              | Rev CASM  | $/Pax-NM  | Annual Cost   | LC Total      | Seats
 ------------------------------------------------------------------------------------------
 Joby S4               |   0.1823  |   0.0365  |  1,204,500    |  8,431,500    |   4
@@ -97,6 +97,11 @@ It will auto-discover all `*Cost_Model*.xlsx` files, print the comparison table,
 ---
 
 ## Run tests
+
+For Grant's transportation sandbox, install `.[dev,openmdao,airtravelmodel]`
+and start with `python scripts/check_sandbox_setup.py --profile inputs`.
+Aircraft cost analysis above and the sandbox are different workflows;
+a successful aircraft example does not validate demand.
 
 ```bash
 pytest tests/

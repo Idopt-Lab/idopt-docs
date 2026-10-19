@@ -28,7 +28,7 @@ python example.py --origin ROA --destination CLT
 python example.py --mode bus --origin ROA --destination CLT --allow-heuristic
 ```
 
-Check out the unified-API feature branch until its PR is merged. Artifacts load
+Use the repository's `main` branch. Artifacts load
 from `src/air_travel_model/data`, or `TSAM_DATA_DIR` when explicitly configured.
 Do not load untrusted pickle artifacts.
 
@@ -51,6 +51,123 @@ Create the predictor once and reuse it. `quote_many` is an ordered convenience
 batch (up to 2,500 requests), not a vectorized all-mode inference promise.
 No routing API calls are made by these two methods.
 
+## Detailed price and time explanation
+
+Add `verbose=True` to any `quote` request, including rows sent to `quote_many`
+or the hosted `/quotes` endpoint. Normal responses are unchanged. Verbose adds
+`explanation` with price inputs/formula, price line items, time components,
+connecting airports and layover allowances, source periods, and excluded costs
+or time. This is an itemized calculation trace, not a bookable ticket SKU.
+
+```python
+result = predictor.quote('air', 'ROA', 'LAX', max_connections=2, verbose=True)
+print(result['explanation']['time']['components'])
+print(result['explanation']['price'])
+```
+
+```bash
+python example.py --mode air --origin ROA --destination LAX --verbose
+```
+
+The cached example returns ROA–ATL 81 minutes, an ATL layover allowance of
+170 minutes, and ATL–LAX 277 minutes: 528 minutes total. The $463.67 fare is a
+whole-market estimate, not the sum of separately purchased leg tickets and not
+a quote for that specific Atlanta itinerary. `booking_identifier` remains null.
+Air-model explanations expose the selected observation/model tier and, when a
+learned head is used, its input features and output transformation. They do not
+invent additive dollar contributions for nonlinear model features.
+
+| Mode | Time calculation in `quote()` | Connection treatment |
+| --- | --- | --- |
+| Commercial air | Sum observed gate/ramp-to-gate/ramp leg times plus modeled connection allowances | Fastest graph path within `max_connections` (0–8); current artifact uses 170 minutes per connection, without dated flight matching |
+| RAM | Great-circle statute miles / (knots × 1.15078) × 60 | One hypothetical leg, capped at 300 miles by default; no multi-hop search in this API |
+| Drive | Great-circle miles × 1.15 / learned effective speed × 60 | No connections; no live traffic or rest stops |
+| Published Virginia Breeze | Scheduled arrival minus departure on the selected dated service | Intermediate stops already included; no transfer search |
+| Generic bus heuristic | Offline drive time × 1.12 + 20 minutes + 5 minutes per 100 proxy road miles | No service/transfer verification |
+| Amtrak / Acela | Median scheduled departure-to-arrival duration for the selected service | Intermediate station dwell included; one train only, no transfer search |
+
+Train pairs without a matching selected-service schedule can return time-only
+from the older all-feed lookup or geographic model. The explicitly requested
+time heuristic uses 48 mph on proxy rail distance, 35 fixed minutes and six
+minutes per 100 proxy rail miles. These fallbacks do not establish service.
+The verbose response labels them differently from a matched schedule.
+
+Terminal-to-terminal predictions exclude access/egress, initial waiting/security,
+and destination exit time. RAM time is cruise only and also omits taxi, climb and
+descent. These omissions are exposed, not filled with zero-minute claims.
+
+The predictor now owns survey journey assembly. The sandbox imports that same
+implementation instead of adding a second timing layer. Defaults stay unchanged:
+access/egress driving, 20 minutes per RAM-to-RAM transfer, 35 minutes per
+RAM/commercial interface, and commercial layovers from the flight artifact.
+Endpoint processing and initial schedule waiting default to zero in the survey;
+Grant's county study keeps its existing, separate input values and output schema.
+
+### Editable journey assumptions
+
+```python
+from air_travel_model import JourneySettings, TransportPredictor
+
+predictor = TransportPredictor()
+settings = JourneySettings(
+    commercial_connection_minutes=45,
+    origin_processing_minutes=60,
+    destination_processing_minutes=15,
+    schedule_delay_minutes=20,
+)
+result = predictor.quote('air', 'ROA', 'LAX', journey=settings, verbose=True)
+print(result['journey']['timing'])
+```
+
+These are scenario assumptions, not measured security queues or validated
+minimum connection times. Fare stays a whole-market estimate. A shorter layover
+can change the fastest selected path; it does not make its ticket cheaper.
+
+`include_connections`, `include_processing`, and `include_schedule_delay` are
+independent booleans, all defaulting to true. Setting one false excludes only
+that component. Intermediate stops already embedded in a bus/train schedule
+are not transfers and are never subtracted. `commercial_connection_minutes=None`
+preserves the artifact's allowance. RAM transfer defaults remain 20/35 minutes.
+All supplied minute values must be finite, nonnegative, and at most 1,000,000.
+
+Omit `journey` to preserve the old quote fields. Supplying it adds a `journey`
+breakdown and changes `time_minutes`, never the fare. `verbose=True` includes
+the same added allowances in its reconciled time components. This does not
+automatically supply access/egress to a terminal-to-terminal quote.
+
+For coordinate-based survey trips, call `predictor.plan_survey(scenario)` or
+send the same JSON to `/api/plan` on either website:
+
+```json
+{
+  "origin": {"lat": 37.2296, "lon": -80.4139},
+  "destination": {"lat": 40.7506, "lon": -73.9972},
+  "journey": {
+    "commercial_connection_minutes": 45,
+    "ram_connection_minutes": 20,
+    "ram_commercial_transfer_minutes": 35,
+    "origin_processing_minutes": 60,
+    "destination_processing_minutes": 15
+  }
+}
+```
+
+Survey driving remains pure driving; terminal allowances apply to air/RAM
+options. Supplied settings are applied during option selection, not after it.
+Grant's county `/api/run` remains the compatibility baseline, with waiting
+inputs from his data/settings. Its time/cost aggregation delegates to the
+package when installed; standalone legacy installations retain the original
+arithmetic. County bus/rail data stay on Grant's baseline by default. Selecting
+`ground_transport.source="predictor"` uses current operator bus data and the
+recorded rail schedule with opt-in estimated fares. It retains Grant's lodging
+rules, mode-choice equations and saved RAM network; it does not reoptimize that
+network. See the [sandbox guide](/regional-air-mobility-design-operations/guides/sandbox).
+
+Every available amount/minute total reconciles with its corresponding line items
+or components. A model/schedule output without a finer decomposition appears as
+one unsplit item rather than fabricated segment prices or stop-by-stop durations.
+Unavailable values stay null with empty components and the failure reason.
+
 ## Response contract
 
 | Field | Meaning |
@@ -64,10 +181,14 @@ No routing API calls are made by these two methods.
 | `price_source`, `time_source` | Observation/model/formula provenance |
 | `fare_data_through`, `time_data_through` | Coverage period when available |
 | `distance_miles` | Great-circle statute miles, not road or rail distance |
-| `itinerary` | Commercial airport sequence and connection count, otherwise `null` |
-| `service_evidence` | Historical air legs, hypothetical RAM, or `not_checked` |
+| `itinerary` | Commercial airport sequence, published bus service, or single-train station details when available |
+| `service_evidence` | Historical air legs, dated bus service, a single train in the recorded feed window, hypothetical RAM, or `not_checked` |
+| `rail_schedule` | Rail feed window, requested date and recorded-window versus last-known-estimate basis; not a dated booking confirmation |
 | `live_quote` | Always `false` for this API |
+| `train_service` | `amtrak` (excluding Acela), `acela`, or `null` for other modes |
+| `fare_assumptions` | Rail heuristic's rate, distance proxy, source and reporting period; otherwise `null` |
 | `reason`, `warnings` | Why values are missing and what the estimate does not establish |
+| `explanation` | Included only with `verbose=true`; itemized calculation and exclusions |
 
 `estimated` means both numerical outputs exist. It does **not** certify a
 bookable service, schedule, accessible road, runway compatibility, or price
@@ -126,7 +247,40 @@ If the time artifact is absent, time remains missing unless heuristics are enabl
 
 ### Bus
 
-No trained bus artifacts were present in the checked checkout. By default price
+Virginia Breeze's official GTFS feed now supplies published fares and scheduled
+times for named stops. The October 18 download covers October 20, 2026 through
+October 19, 2027. It contains 372 priced trip/stop-pair records at 31 unique stop
+codes; 354 records run on November 17. These are operator-published values, not
+an ML fare model fitted to synthetic labels.
+
+```python
+predictor.quote('bus', 'vabreeze:BLK', 'vabreeze:WASH', departure_date='2026-11-17')
+```
+
+This returns $49 and 375 minutes, departing Blacksburg at 08:00 and arriving at
+Washington Union Station at 14:15, with zero transfers. Intermediate stops are
+already included in elapsed time. Access, initial waiting and destination exit
+are not included. A holiday-only express service is considered only on its
+published operating dates. The API chooses the lowest published fare and then
+the shortest scheduled duration; it does not check seats or live checkout totals.
+
+Stop codes are namespaced to avoid confusing bus stops with airports.
+`departure_date` is required for `vabreeze:` endpoints and is also accepted for
+train requests. Bus dates outside the feed window return unavailable, not a
+fabricated fare. These records are available in the package and `/quotes`.
+The county sandbox uses them only when you select predictor bus/rail inputs;
+Grant's original matrices remain the default baseline.
+
+```bash
+python example.py --mode bus --origin vabreeze:BLK --destination vabreeze:WASH --departure-date 2026-11-17
+PYTHONPATH=src python scripts/update_bus_schedule.py --gtfs path/to/virginia-breeze-gtfs.zip --date 2026-11-17 --csv bus-services.csv
+```
+
+[Source and usage terms](https://drpt.virginia.gov/data/gtfs-feed-clearinghouse/).
+Virginia Breeze / Transcor Data Services provides the feed as-is; IDOPT is not
+affiliated with or endorsed by the operator.
+
+For other bus endpoints, no trained bus artifacts are bundled. By default price
 and time are missing. Explicit `allow_heuristic=True` enables the existing fare
 rule: base $12 plus `0.10 * (great_circle_miles * 1.25) ** 0.82`, with quarter,
 short-trip and minimum-fare factors. Those factors have not been validated here.
@@ -139,11 +293,145 @@ training. Service existence, transfers and fares still need observed data.
 
 ### Train
 
-Train station codes require `amtrak_stations.csv`. Airports are not silently
-substituted for stations. No trained train-time artifact or registered train-fare
-predictor was present in the checked checkout. Coordinates may explicitly exercise
-the optional time heuristic (48 mph, 1.15 detour, stop overhead), but that does not
-establish a rail route. Time-only estimates have `partial` status, never a fake fare.
+Use station codes, not airport codes. Select `train_service='amtrak'` (the default,
+excluding Acela) or `'acela'`. These are services, not seat classes.
+Prices remain missing by default: no fare model has been trained on dated ticket
+observations. Explicit `allow_heuristic=True` enables an aggregate-based estimate.
+
+```python
+predictor.quote('train', 'WAS', 'NYP', allow_heuristic=True)
+predictor.quote('train', 'WAS', 'NYP', train_service='acela', allow_heuristic=True)
+predictor.quote('train', 'RNK', 'ALX', allow_heuristic=True)
+```
+
+```bash
+python example.py --mode train --origin WAS --destination NYP --train-service acela --allow-heuristic
+```
+
+The fare rule is `gross_ticket_revenue / passenger_miles * (great_circle_miles * 1.15)`.
+Revenue and passenger miles come from Amtrak's [August FY2026 report, Table 8](https://www.amtrak.com/content/dam/projects/dotcom/english/public/documents/corporate/monthlyperformancereports/2026/Amtrak-Monthly-Performance-Report-August-2026.pdf).
+Both reported quantities are in millions, so their ratio is dollars per passenger-mile.
+The 1.15 distance factor is an assumption, not measured track distance.
+
+| Selected service / corridor | Revenue / passenger miles | Approximate rate |
+| --- | --- | --- |
+| Acela | 550.1 / 609.8 | $0.9021/mile |
+| Regular rail, both endpoints on Northeast Corridor | 953.1 / 2018.8 | $0.4721/mile |
+| Regular rail, both endpoints on Washington–Roanoke corridor | 12.5 / 46.5 | $0.2688/mile |
+| Other regular rail | 560.4 / 1888.8, state-supported network proxy | $0.2967/mile |
+
+These mix tickets across dates and seat classes. They do not estimate a cheapest
+ticket, a specific departure, a business/coach premium or a connecting through-fare.
+The state-supported proxy is not a calibration for long-distance routes.
+Nominal reporting-period dollars are used without inflation adjustment.
+`price_source='amtrak_aggregate_yield_heuristic'` and `fare_assumptions` expose the
+calculation. No measured accuracy or confidence interval is claimed.
+
+The bundled October 18 snapshot covers October 18–24, 2026. Hosted deployments
+refresh the official Amtrak feed daily at 10:00 UTC; the successful October 19
+refresh advanced its window to October 19–25. Read `rail_schedule` in each response
+for the actual loaded window rather than assuming those dates remain current.
+These are single-train pairs; intermediate stops do not count as connections. Times are
+median origin departure to destination arrival, including intermediate dwell,
+but excluding access, initial waiting and station exit time. They are not dated
+booking checks and are not a transfer planner. `max_connections` does not create
+rail transfers.
+
+You can supply `departure_date='2026-11-17'`. Outside the loaded feed window, a
+known pair remains available as a **last-known schedule estimate**, not evidence
+that a train operates on that date. `dated_service_confirmed` remains false even
+inside the window: the duration is a median, not a selected bookable departure.
+Unknown pairs are not invented to fill coverage gaps.
+
+A failed refresh retains the last good data and records the failure. The scheduled
+job tries again the next day. Serving processes check the shared cache for changes
+at most every five minutes; quote requests do not download GTFS. Offline installs
+use the bundled snapshot unless `TSAM_RAIL_DATA_DIR` points to a maintained cache.
+Refreshing schedules does not refresh ticket fares or retrain a fare model.
+
+Examples below use the October 18 snapshot, not live ticket quotes:
+
+| Example | Heuristic one-way fare per person | Scheduled minutes |
+| --- | --- | --- |
+| Washington–New York, regular Amtrak | $111.10 | 207 |
+| Washington–New York, Acela | $212.29 | 181.5 |
+| Roanoke–Alexandria, regular Amtrak | $58.43 | 299 |
+
+Roanoke–New York on Acela is unavailable, not an invented Acela journey.
+Roanoke–Washington has no single-train match in that October 18 window: the active
+Roanoke trips terminate at Alexandria. A fare is not supplied for that missing
+through-service. Regular-rail pairs with no selected-service match may still
+return time only from the older all-feed lookup (`amtrak_gtfs_unfiltered_median`)
+or geographic model, explicitly without service evidence. Coordinates alone
+never establish train service or qualify for this fare fallback.
+
+The older time ensemble was trained on 19,181 pairs before calendar filtering.
+Its 10.16% mean absolute percentage error / 32.27-minute mean absolute error on
+3,834 held-out pairs is a same-feed time test, not fare accuracy or confirmation
+that those services operated in the feed window. It was not retrained for this change.
+
+Refresh just the separated schedule with
+`PYTHONPATH=src python scripts/update_rail_schedule.py --gtfs path/to/GTFS.zip`.
+The existing `scripts/update_train_time.py` also refreshes it when retraining.
+The package and hosted APIs support this fallback. The sandbox's predictor
+bus/rail option accepts these labeled planning estimates; its legacy option
+continues to use Grant's original train-fare matrices.
+
+### Flight coverage refresh
+
+July 2026 T-100 records add 1,234 directed passenger-service legs missing from
+the on-time reporting feed. Only scheduled passenger service with positive seats
+and passengers and at least ten performed departures is included; cargo and
+unscheduled charter rows are excluded. Existing on-time observations remain in place.
+`itinerary.leg_sources` distinguishes `bts_ontime` from `t100_scheduled`.
+T-100 times are mean ramp-to-ramp minutes per departure, not scheduled times.
+
+The same 500-route diagnostic improved from 374 to 456 air estimates. The remaining
+44 all involve BCB: 21 regional endpoints in both directions, plus BCB to LAX and
+SEA. BCB resolves in the airport metadata and can be a hypothetical RAM endpoint,
+but is absent from the observed commercial-flight graph. It is not an unknown
+physical airport. The quote now reports `airport_not_in_commercial_dataset`.
+These are not 44 independent gaps at commercial airports. Beckley–Charlotte now returns a recorded
+market-average fare of $73.16 and a 90.32-minute direct leg; this is not the $54
+November 17 ticket previously observed on Google Flights.
+
+### Travel-time audit
+
+The common response shape does not mean the package, survey and county study use
+identical trip boundaries:
+
+| Path | Time calculation | Missing or assumed |
+| --- | --- | --- |
+| Air quote | Sum of observed gate-to-gate legs + 170 minutes per connection | Fixed layover, not a feasible dated timetable; no access or endpoint processing |
+| Survey air journey | Origin drive + air legs + connections + destination drive + supplied journey allowances | Processing and initial waiting default to zero; explicit settings are counted once |
+| County air round trip | Twice access/egress + outbound/return legs including connections + endpoint processing + schedule-delay penalties | Commercial schedule-delay inputs still come from legacy 2016 tables |
+| RAM quote | Great-circle statute miles / (knots * 1.15078) * 60 | Cruise-only; no taxi, climb/descent or endpoint processing |
+| Survey RAM transfer | 20 minutes RAM-to-RAM, 35 minutes at each RAM/commercial interface | Fixed allowances, not airport-specific minimum connection times |
+| Published Virginia Breeze | Destination arrival - origin departure on an active dated service | Includes intermediate stop dwell; excludes access and initial/exit waiting |
+| County train/bus round trip | Twice access/egress and station waits + directional riding times + directional schedule penalties | Legacy tables by default; predictor option uses published bus services and recorded rail schedules with explicit estimated-fare opt-in |
+
+Set appropriate endpoint-processing and waiting assumptions before treating the
+survey totals as complete door-to-door estimates. A fixed 170-minute connection allowance does
+not prove same-day flight compatibility. These findings were reviewed directly
+in code; passing tests is not validation of those behavioral assumptions.
+
+The draft RAM paper uses 300 statute miles as a baseline economic mission, not
+a universal aircraft range limit. The package's configurable 300-mile per-leg
+limit is a separate user-requested scenario constraint.
+
+For Amtrak fare observations, RailForLess documents a dated fare-search API at
+`https://api.railforless.us/v1/fares`. The October 18 access test returned HTTP 401
+because an API key is required. Its documentation names `info@railforless.us`
+as the key-request contact. VRE publishes a current July 2026 fare chart, but
+commuter-rail fares are not substituted for Amtrak's intercity fares.
+
+### Batch consumers
+
+`predict_batch(model_type, pairs)` returns aligned `values` and `sources` arrays.
+It retains vectorized model calls; driving always uses the offline model.
+`model_metadata(model_type)` exposes artifact coverage/currency, and
+`flight_legs()` exports sourced observed passenger legs. Grant's matrix adapters
+use this interface while retaining their round-trip and currency conversions.
 
 ## Hosted API
 
@@ -159,11 +447,26 @@ service failures 503. Per-row input/data problems remain explicit result statuse
 ]
 ```
 
-Deployed and smoke-tested on 2026-10-18 at:
+The direct predictor endpoint is deployed at:
 `https://travel-preference-survey--air-travel-model-fastapi-app.modal.run/quotes`.
-The checks exercised air, RAM range rejection, bus opt-in and train JSON coordinates.
-The legacy `/predict_all` endpoint passed its separate compatibility smoke test.
-These are deployment checks, not accuracy certification. The app scales to zero;
+The survey and sandbox also expose the shared engine at `/api/quotes`, with a
+different envelope and a maximum of 20 requests:
+
+```bash
+curl https://sandbox.idoptlab.com/api/quotes \
+  -H 'Content-Type: application/json' \
+  -d '{"requests":[{"mode":"air","origin":"ROA","destination":"CLT","verbose":true}]}'
+```
+
+Replace the host with `survey.idoptlab.com` to use the same contract there.
+Both websites also expose `/api/plan` for one-way coordinate-based journeys.
+The sandbox's `/api/run` is a separate county round-trip study, not a synonym
+for `/api/plan`. The survey questionnaire does not gain bus/train choices merely
+because these modes exist in the shared quote API.
+
+October 19 checks compared both websites' quote and planner results and exercised
+county bus/rail with November dates while preserving the legacy baseline.
+These are integration checks, not accuracy certification. The app scales to zero;
 container limits reduce spend but do not guarantee a zero monthly bill.
 
 ## Reproduce the 500-route check
@@ -203,3 +506,6 @@ It runs after relevant changes reach `main`, or through manual dispatch.
 The old `air-travel-model` URL prefix is retained; the navigation tab becomes
 **Transit Price Models**. Mintlify then builds the central documentation repository.
 Check both the sync action and the Mintlify deployment before claiming publication.
+Cross-repository sync currently requires an owner to renew its failed credential.
+Until that is repaired, reviewed documentation can be published through a pull
+request directly to `idopt-docs`; its existing Mintlify connection deploys `main`.

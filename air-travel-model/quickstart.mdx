@@ -10,7 +10,7 @@ pip install -e '.[test]'
 python example.py --origin ROA --destination CLT
 ```
 
-Until merged, use the `codex/unified-prediction-api` branch. The repository is private.
+Use `main`. The repository is private and requires lab access.
 
 ```python
 from air_travel_model import TransportPredictor
@@ -20,6 +20,7 @@ result = predictor.quote('air', 'ROA', 'CLT', max_connections=0)
 print(result['status'], result['price_usd'], result['time_minutes'])
 ```
 
-Read `docs.md` in the repository root for the full contract. Missing is not zero.
+Read the [API reference](/air-travel-model/api/quotes) for the full contract,
+or its source `docs.md` in the repository root. Missing is not zero.
 Use `allow_heuristic=True` only when an explicitly labeled approximate formula
 is acceptable. Train station data and fare coverage remain incomplete.

@@ -1,45 +1,26 @@
 ---
 title: Overview
-description: Unified transport cost and time predictions for U.S. domestic routes
+description: Offline estimates with explicit provenance and missing-data status
 ---
 
-**airTravelModel** is a Python library that predicts transportation cost and travel time across U.S. domestic routes — air, drive, bus, and train — through a single unified API.
+The repository is now `transitPricePredictionModels`; Python imports remain
+`air_travel_model`. Use `TransportPredictor.quote()` and `quote_many()` for the
+consistent price/time result contract. The canonical reference is `docs.md` at
+the repository root; `scripts/build_mintlify.py` builds its publishing directory.
 
-## What it does
+Commercial air reuses existing observed averages and trained predictors. RAM
+uses an operating-cost formula. Driving uses an offline time model with a
+distance-based vehicle cost. Virginia Breeze uses published fares and dated bus
+schedules. Amtrak and Acela use recorded single-train schedules, refreshed daily
+in the hosted service. Rail fares require an explicit opt-in to an aggregate-based
+estimate; they are not trained on dated ticket prices. Generic bus heuristics
+also require opt-in.
 
-Given an origin and destination (airport codes, city names, or coordinates), `TransportPredictor` returns fare and time estimates for every transport mode, using ensemble ML models trained on real schedule and ticket data.
+The survey and sandbox share the predictor engine. Grant's county study retains
+its original bus/rail baseline and offers the new inputs as a selectable option.
+Use the [API reference](/air-travel-model/api/quotes) for price/time explanations,
+connection settings, schedule freshness and hosted examples. Use the
+[sandbox guide](/regional-air-mobility-design-operations/guides/sandbox) for county studies.
 
-```python
-from air_travel_model import TransportPredictor
-
-tp = TransportPredictor()
-results = tp.predict_all("CHS", "ROA", quarter=2)
-# {
-#   "air_fare":   291.81,   # USD
-#   "air_time":    59.0,    # minutes
-#   "drive_time": 454.0,    # minutes
-#   "drive_fare":  46.25,   # USD
-# }
-```
-
-## Models at a glance
-
-| Mode | Output | R² | Training data |
-|------|--------|----|---------------|
-| Air fare | Economy / business fare (USD) | 0.92 | BTS DB1B 2023–2025 |
-| Air time | Block time (minutes) | 0.94 | BTS T-100 2023–2025 |
-| Drive time | Door-to-door drive time (minutes) | 0.99 | OSRM / OpenStreetMap |
-| Drive fare | Fuel cost estimate (USD) | — | Formula-based |
-| Bus fare | Intercity fare (USD) | — | Calibrated heuristic |
-| Bus time | Intercity travel time (minutes) | — | Calibrated heuristic |
-| Train time | Amtrak travel time (minutes) | 0.99 | Amtrak GTFS |
-
-All models fall back gracefully to calibrated heuristics for routes outside the training distribution.
-
-## Design
-
-- **Single entry point**: `TransportPredictor` — no need to import individual predictors.
-- **Ensemble architecture**: each trained model is either HistGradientBoosting, RandomForest, or an average ensemble — whichever scored best on validation.
-- **Graceful degradation**: `predict()` uses ML with OSRM/heuristic fallbacks; `estimate()` always returns a value.
-- **Mountainous terrain aware**: drive time for routes not in training data queries OSRM live rather than using straight-line (haversine) distance, which would dramatically underestimate travel time on winding mountain roads.
-- **Extensible**: abstract `BaseTrainer` / `BasePredictor` make it straightforward to add new modes.
+Interface tests are not price-accuracy evidence. Historical average fares are
+not live ticket quotes. No new mode was trained merely by adding the unified API.

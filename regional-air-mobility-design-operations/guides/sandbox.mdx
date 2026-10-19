@@ -1,0 +1,129 @@
+---
+title: County travel sandbox
+description: Run a county comparison with Grant's baseline or the shared transport predictors
+---
+
+## What you are running
+
+Open [sandbox.idoptlab.com](https://sandbox.idoptlab.com). It compares a county
+round trip using driving, air, train and bus. Its air calculations include saved
+RAM network routes where Grant's code inserts them into the air matrices; RAM
+is not a separate fifth calibrated choice. RAM means regional air mobility. This is a research calculation,
+not a ticket search. Cloudflare serves the website and Modal runs Python; your
+laptop does not need to stay on.
+
+Grant's trip-cost rules and mode-choice equations remain in place. The predictor
+package supplies transport prices and times through adapters. The website
+recalculates county results against a **fixed saved RAM network**; it does not
+rerun the full fleet/network optimization for each request.
+
+## Run the demo
+
+1. Choose the Blacksburg-area origin and Washington, DC destination.
+2. Run with **Bus / rail inputs → Grant's original baseline** first.
+3. Switch to **Our predictors — recorded services**, enter departure and return
+   dates, and enable estimated rail fares if you want an Amtrak price estimate.
+4. Run again. Compare mode costs, times and shares, then inspect the source and
+   schedule warnings. Export the scenario JSON to reproduce your settings.
+
+Your station-distance limits determine which nearby stops are candidates; they
+are not maximum train or bus trip distances. If no supported service connects
+the selected candidates, that option remains unavailable. Acela is not invented
+from Roanoke simply because you selected it.
+
+## JSON settings
+
+Add this field to an existing exported scenario. It is a fragment, not a complete
+scenario file:
+
+```json
+{
+  "ground_transport": {
+    "source": "predictor",
+    "departure_date": "2026-11-17",
+    "return_date": "2026-11-18",
+    "allow_rail_fare_estimates": true,
+    "schedule_delay_minutes": 30
+  }
+}
+```
+
+Omit `ground_transport`, or use `{"source":"legacy"}`, to retain Grant's
+original baseline. Predictor inputs currently require scenario year 2026 and
+legacy data year 2016. Both dates are required; the return cannot precede the
+departure. The schedule-delay setting is minutes **per direction**, from 0 to
+1,440, and defaults to zero. Rail fare estimates default to disabled.
+
+The repository's `schemas/sandbox-scenario.schema.json` defines the full input
+contract. Use the exported scenario rather than constructing county identifiers
+by hand. JSON and YAML runners share the scenario validation. Local predictor
+bus/rail runs also require `--current-air` and the private study inputs.
+
+## What changes between the two settings
+
+| Input | Grant's original baseline | Predictor option |
+| --- | --- | --- |
+| Bus | Original study station, fare and time tables | Virginia Breeze stops, published fares and dated single-bus services |
+| Rail | Original study station, fare and time tables | Amtrak/Acela single-train schedule medians; fares only with explicit estimate opt-in |
+| Station access | Original county-to-station tables | County-centroid-to-current-stop straight-line distance, with Grant's existing access speed and cost rules |
+| Waiting | Original study values | Grant's processing time plus your chosen schedule delay per direction |
+| Study equations | Original cost, lodging and mode-choice rules | Same rules; supplied transport inputs change |
+
+The predictor option does not use generic bus heuristics to invent missing
+services. It checks outbound and return services separately. Intermediate stops
+are already part of scheduled riding time; no additional transfers are planned.
+Station access is not a newly routed road journey. Reduce the station-distance
+limits if the candidate search exceeds 100 station pairs per mode.
+
+## Read the output correctly
+
+County results are **round trips in the legacy 2016-dollar study cost basis**.
+They can include station access, waiting and lodging, not just tickets. Predictor
+fare assumptions are converted from 2026 dollars to the study basis before
+calculation. Do not compare a county cost total directly with a one-way ticket.
+
+The separate [predictor quote API](/air-travel-model/api/quotes) returns one-way
+prices and minutes. Its verbose response explains individual time and price
+components. The survey and sandbox share that engine, but their boundaries differ:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `/api/quotes` on either website | Terminal-to-terminal mode estimates, optional journey allowances and explanations |
+| `/api/plan` on either website | One-way coordinate-based survey journey comparison |
+| `/api/run` on the sandbox | County round-trip study with Grant's cost and mode-choice rules |
+
+Commercial airfare is a typical whole-market estimate, not the cheapest ticket
+and not a separately priced itinerary through a particular connecting airport.
+RAM quotes are hypothetical, with a configurable 300-mile single-leg limit by
+default; they do not manufacture multi-hop service to California.
+
+## What happens after the rail feed expires
+
+The hosted service refreshes Amtrak schedules daily at 10:00 UTC. The bundled
+October 18 snapshot covered October 18–24; the October 19 refresh advanced the
+window to October 19–25. The actual loaded dates are returned in `rail_schedule`.
+
+Outside that window, a known route can still provide a **last-known schedule
+estimate**. That does not confirm a train on your requested date. Even inside
+the window, the model returns a schedule median, not a reserved departure.
+Failures retain the last good data and the scheduled job retries the next day.
+Serving processes check the shared cache at most every five minutes.
+
+This refresh updates schedules and stations, not rail ticket prices. Amtrak
+fares remain aggregate revenue-per-passenger-mile estimates. Virginia Breeze
+has a separate dated feed; its out-of-window dates return unavailable and its
+feed is not covered by the Amtrak refresh job.
+
+## What is still old or estimated
+
+- The demand base is still the 2016 county trip tables. Woods & Poole CEDDS 2025
+  projections grow that base to a 2026 scenario; they are not observed 2026 trips.
+- The default bus/rail baseline and commercial schedule-delay tables retain
+  legacy inputs. Choosing predictor bus/rail does not replace every study table.
+- Cached road coverage is bounded; uncovered pairs can retain legacy inputs.
+- Rail fares are estimates, flight fares are market averages, and neither is
+  a live booking quote. Passing integration tests does not establish price accuracy.
+
+Licensed Woods & Poole archives and normalized values must remain outside public
+repositories and documentation. Local runners also need the lab's study assets;
+installing the Python package alone does not supply them.

@@ -34,6 +34,7 @@
           {
             "group": "Guides",
             "pages": [
+              "regional-air-mobility-design-operations/guides/sandbox",
               "regional-air-mobility-design-operations/guides/cost-model",
               "regional-air-mobility-design-operations/guides/input-format"
             ]
@@ -41,10 +42,10 @@
         ]
       },
       {
-        "tab": "Air Travel Model",
+        "tab": "Transit Price Models",
         "groups": [
           {
-            "group": "Air Travel Model",
+            "group": "Transit Price Models",
             "pages": [
               "air-travel-model/overview",
               "air-travel-model/quickstart"
@@ -53,6 +54,7 @@
           {
             "group": "Api",
             "pages": [
+              "air-travel-model/api/quotes",
               "air-travel-model/api/transport-predictor"
             ]
           },
